@@ -1,0 +1,622 @@
+import { windowProperties } from "./windowProperties";
+export interface AstNode {
+  type: string;
+  name?: string;
+  start?: number | null;
+  end?: number | null;
+  loc?: Record<'start'|'end', { line: number, column: number }> | null;
+  range?: [number, number];
+  extra?: Record<string, unknown>;
+  _util: {
+    startLine: number,
+    endLine: number,
+    startColumn: number,
+    endColumn: number,
+    filePath: string,
+    parent: AstNode|null,
+    parentProperty: string,
+    indexOfProperty: number|null,
+    ancestors: AstNode[],
+    nodeCollection: AstNode[],
+    children: AstNode[],
+    uuid: string,
+    variableScope: AstNode[],
+    dependenceIds: Set<AstNode>,
+    holdingIds: Set<AstNode>,
+    holdingIdNameMap: Map<string, Set<AstNode>>,
+    inject: Set<AstNode>,
+    provide: Set<AstNode>,
+    effectIds: Set<AstNode>,
+    crossScope: Set<AstNode>,
+  }
+}
+
+export default class AstUtil {
+  static invalidNodeKey = [
+    "comments",
+    "tokens",
+  ];
+
+  static getNodePath(node: AstNode){
+    return [...node._util.ancestors, node].map(n => n.type).join(':') + ":" + node.name;
+  }
+
+  static deepFirstTravel(node: AstNode, filePath: string, mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>>){
+    const visitedNodeSet = new Set<typeof node>();
+    if(!node){
+      return ;
+    }
+    return this._deepFirstTravel(node, visitedNodeSet, {filePath, depth:0, mapUuidToNode, mapFileLineToNodeSet})
+  }
+  static _deepFirstTravel(node: AstNode, visitedNodeSet: Set<typeof node>, extra: { filePath: string, depth: number, mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>> }){
+    visitedNodeSet.add(node);
+    const { filePath, depth, mapUuidToNode, mapFileLineToNodeSet } = extra;
+    const _util: AstNode['_util'] = {
+      startLine: NaN,
+      endLine: NaN,
+      startColumn: NaN,
+      endColumn: NaN,
+      filePath,
+      parent: null,
+      parentProperty: "",
+      indexOfProperty: null,
+      ancestors: [],
+      nodeCollection: [],
+      children: [],
+      uuid: "",
+      variableScope: [],
+      dependenceIds: new Set<AstNode>(),
+      holdingIds: new Set<AstNode>(),
+      holdingIdNameMap: new Map<string, Set<AstNode>>(),
+      inject: new Set<AstNode>(),
+      provide: new Set<AstNode>(),
+      effectIds: new Set<AstNode>(),
+      crossScope: new Set<AstNode>(),
+    }
+    node._util = _util;
+    // 存储 当前 ast 节点下的 所有的 node 集合
+    const { nodeCollection, children } = _util;
+    Object.keys(node).forEach(nodeKey => {
+      if(this.invalidNodeKey.includes(nodeKey) || nodeKey.startsWith("TS") || nodeKey.endsWith('Annotation')){
+        return;
+      }
+      // @ts-ignore
+      const nodeValue = node[nodeKey];
+      if(visitedNodeSet.has(nodeValue) || !nodeValue){
+        return;
+      }
+      if(this.isValidNodeCollect(nodeValue)){
+        const childNode = this._deepFirstTravel(nodeValue, visitedNodeSet, { filePath, depth: depth +1, mapUuidToNode, mapFileLineToNodeSet})
+        nodeCollection.push(childNode, ...childNode._util.nodeCollection);
+        children.push(childNode);
+        childNode._util.parentProperty = nodeKey;
+      }
+      else if(this.isValidArrayNodeCollect(nodeValue)){
+        const validNodeArray = (nodeValue as AstNode[]).filter(nodeItem => this.isValidNodeCollect(nodeItem)).map(v => {
+          return this._deepFirstTravel(v, visitedNodeSet, { filePath, depth: depth +1, mapUuidToNode, mapFileLineToNodeSet})
+        });
+        nodeCollection.push(...validNodeArray.map( n => [n, ...n._util.nodeCollection]).flat());
+        children.push(...validNodeArray);
+        validNodeArray.forEach((v, index) => {
+          v._util.parentProperty = nodeKey;
+          v._util.indexOfProperty = index;
+        });
+      }
+    });
+    children.forEach(child => child._util.parent = node);
+    nodeCollection.forEach(nodeItem => nodeItem._util.ancestors.unshift(node));
+    this.collectHoldingIds(node as AstNode & { body: AstNode|null});
+    this.collectInjectProvide(node as AstNode & { body: AstNode|null});
+    this.collectEffectId(node);
+    this.updateLoc(node, { mapUuidToNode, mapFileLineToNodeSet });
+    return node;
+  }
+
+  static collectInjectProvide(ast: AstNode){
+    const { type, _util: { inject, provide, holdingIds }} = ast;
+    if(type !== "Program" || !this.isBodyArray(ast)){
+      return;
+    }
+    ast.body.forEach(node => {
+      node.type === "ImportDeclaration" && this.findIdOfImport(node, id => inject.add(id));
+      if(node.type === "ExportAllDeclaration"){
+        const { exported } = node as unknown as { exported: AstNode };
+        provide.add(exported);
+        return;
+      }
+      if(node.type === "ExportDefaultDeclaration"){
+        const declaration = (node as unknown as { declaration: AstNode}).declaration;
+        // 导出已声明的 变量 或 函数 或 class
+        if(declaration.type === "Identifier"){
+          const theOne = [...holdingIds].find(e => e.name === declaration.name);
+          theOne && provide.add(theOne);
+        }
+        else {
+          this.deepFindIdOfExpression(declaration, id => provide.add(id));
+        }
+      }
+      if(node.type === "ExportNamedDeclaration") {
+        const {specifiers, declaration} = node as unknown as { specifiers: AstNode[], declaration: (AstNode & { declarations: AstNode[] }) | null};
+        for (const specifier of specifiers) {
+          const { exported } = specifier as unknown as { local: AstNode, exported: AstNode };
+          provide.add(exported);
+        }
+        if(declaration && Array.isArray(declaration.declarations)){
+          for (const dec of declaration.declarations) {
+            provide.add(dec);
+          }
+        }
+      }
+    });
+  }
+
+  static collectHoldingIds(node: AstNode & { body: AstNode|null}){
+    const { holdingIds, holdingIdNameMap } = node._util;
+    if(this.isBodyArray(node)){
+      const { body } = node;
+      body.forEach((cur) => {
+        if(cur.type === "ImportDeclaration"){
+          this.findIdOfImport(cur, id => holdingIds.add(id));
+        }
+        else if(cur.type === "FunctionDeclaration" || cur.type === "ClassDeclaration"){
+          const id = (cur as unknown as { id: AstNode|null }).id;
+          id && holdingIds.add(id);
+        }
+        else if(cur.type === "VariableDeclaration"){
+          this.findIdOfVariable(cur, id => holdingIds.add(id));
+        }
+      });
+    }
+    if(node.body && this.isBodyArray(node.body)){
+      const { body } = node.body;
+      body.forEach((cur) => {
+        this.findIdOfFunctionOrVariableOrClass(cur, id => holdingIds.add(id));
+      });
+    }
+    if(["FunctionDeclaration", "ArrowFunctionExpression", "FunctionExpression"].includes(node.type)){
+      (node as unknown as { params: AstNode[] }).params.forEach(param => this._deepFindIdentifier(param, id => holdingIds.add(id)));
+    }
+    holdingIds.forEach(holdingId => {
+      const holdingIdName = holdingId.name!;
+      const nodeSetOfIdName = holdingIdNameMap.get(holdingIdName) || new Set<AstNode>();
+      nodeSetOfIdName.add(holdingId);
+      holdingIdNameMap.set(holdingIdName, nodeSetOfIdName);
+    });
+    this.collectDependenceIds(node);
+  }
+
+  static isVarInit(node: AstNode){
+    return node._util.parentProperty === 'init' && node._util.parent?.type === 'VariableDeclarator'
+  }
+
+  static isReturnArgument(node: AstNode){
+    return node._util.parentProperty === 'argument' && node._util.parent?.type === 'ReturnStatement';
+  }
+
+  static collectDependenceIds(node: AstNode){
+    const { nodeCollection, dependenceIds, holdingIdNameMap } = node._util;
+    nodeCollection.forEach(e => {
+      this.deepFindIdOfExpression(e, id => dependenceIds.add(id));
+      this.findExportIdentifiers(e, id => dependenceIds.add(id));
+      if(e.type === "Identifier" && (this.isVarInit(e) || this.isReturnArgument(e))){
+        dependenceIds.add(e);
+      }
+    });
+    for (const dependenceId of dependenceIds) {
+      if(dependenceId._util.variableScope.length === 0){
+        const sameNameIds = [...( holdingIdNameMap.get(dependenceId.name!) || [])];
+        dependenceId._util.variableScope.push(...sameNameIds);
+        const firstPick = sameNameIds[0];
+        if(firstPick){
+          firstPick._util.effectIds.add(dependenceId);
+          this.markDependenceIdAsCrossScope(dependenceId, firstPick);
+        }
+      }
+    }
+  }
+
+  static markDependenceIdAsCrossScope(node: AstNode, scopeId: AstNode){
+    const isParamsElement = scopeId._util.parentProperty === "params";
+    const isCalleeId = node._util.parent?.type === "CallExpression" && node._util.parentProperty === "callee"
+    if(isParamsElement && isCalleeId){
+      const fn = scopeId._util.parent!;
+      // todo
+      const isFn = fn.type === "FunctionExpression" || fn.type === "ArrowFunctionExpression";
+      const isFnInVarDec = fn._util.parentProperty === "init" && fn._util.parent?.type === "VariableDeclarator";
+      const isFnInAssign = fn._util.parentProperty === "right" && fn._util.parent?.type === "AssignmentExpression";
+      if(isFn && isFnInVarDec ){
+        const idHolderOfFn = (fn._util.parent as unknown as { id: AstNode }).id;
+        node._util.crossScope.add(idHolderOfFn);
+      }
+      else if(isFn && isFnInAssign){
+        const idHolderOfFn = (fn._util.parent as unknown as { left: AstNode }).left;
+        node._util.crossScope.add(idHolderOfFn);
+      }
+      else if(fn.type === "FunctionDeclaration"){
+        node._util.crossScope.add(fn);
+      }
+    }
+  }
+
+  static isUseStateVarDec(node: AstNode): node is (AstNode & { type: "VariableDeclarator", id: { type: "ArrayPattern", elements: (null|AstNode)[]}, init: { type: "CallExpression", callee: AstNode, arguments: [AstNode]|[]} }) {
+     if(node.type !== "VariableDeclarator") return false;
+     const { id, init } = (node as unknown as { init: AstNode, id: AstNode });
+     if(init.type !== "CallExpression" || id.type !== "ArrayPattern") return false;
+     const { callee } = init as unknown as { callee: AstNode };
+     return (callee.type === "Identifier") && (callee.name === "useState");
+  }
+
+  static isUseMemoVarDec(node: AstNode){
+      if(node.type !== "VariableDeclarator") return false;
+      const { id, init } = (node as unknown as { init: AstNode, id: AstNode });
+      if(init.type !== "CallExpression") return false;
+      const { callee } = init as unknown as { callee: AstNode };
+      return (callee.type === "Identifier") && (callee.name === "useMemo");
+  }
+  static isUseCallbackVarDec(node: AstNode){
+      if(node.type !== "VariableDeclarator") return false;
+      const { id, init } = (node as unknown as { init: AstNode, id: AstNode });
+      if(init.type !== "CallExpression") return false;
+      const { callee } = init as unknown as { callee: AstNode };
+      return (callee.type === "Identifier") && (callee.name === "useCallback");
+  }
+
+  // todo 不断完善
+  static collectEffectId(node: AstNode){
+    if(node.type === "VariableDeclarator"){
+      this.collectEffectIdOfVarDec(node);
+    }
+    if(node.type === "AssignmentExpression"){
+      this.collectEffectIdOfAssign(node);
+      return;
+    }
+    const isDeleteOperator = "UnaryExpression" === node.type && (node as any).operator === "delete";
+    if(isDeleteOperator || ["UpdateExpression"].includes(node.type)){
+      this.collectEffectIdOfUnaryUpdate(node);
+    }
+  }
+
+  static collectEffectIdOfVarDec(node: AstNode){
+    // 收集等号后边的 表达式涉及的 id 集合
+    // 重点关注 useState 生成的变量
+    const { id, init } = (node as unknown as { init: AstNode, id: AstNode });
+    if(!init){
+      return;
+    }
+    if(this.isUseStateVarDec(node)){
+      this.collectEffectIdOfUseState(node);
+      return;
+    }
+    if(this.isUseMemoVarDec(node)){
+      this.collectEffectIdOfUseMemo(node);
+      return;
+    }
+    if(this.isUseCallbackVarDec(node)){
+      this.collectEffectIdOfUseCallback(node);
+      return;
+    }
+    const idSet = new Set<AstNode>();
+    this._deepFindIdentifier(id, ele => idSet.add(ele));
+    const createdExpIdSet = new Set<AstNode>();
+    ["Identifier", "ArrowFunctionExpression", "FunctionExpression"].includes(init.type) ? createdExpIdSet.add(init) : this.deepFindIdOfExpression(init, id => createdExpIdSet.add(id));
+    // 创建的 每个变量的 effectIds 集合为 createdExpIdSet
+    for (const createdId of idSet) {
+      createdId._util.effectIds = new Set([...createdExpIdSet, ...createdId._util.effectIds]);
+    }
+  }
+
+  static collectEffectIdOfUseState(node: AstNode){
+    const { id, init } = (node as unknown as { init: { arguments: AstNode[] }, id: { elements: (null|AstNode)[] } });
+    const args = init.arguments;
+    const argsIdSet = new Set<AstNode>();
+    this._deepFindIdentifier(args[0], ele => argsIdSet.add(ele));
+    const stateNode = id.elements[0];
+    const setStateNode = id.elements[1];
+
+    if(stateNode){
+      const stateIdSet = new Set<AstNode>();
+      this._deepFindIdentifier(stateNode, ele => stateIdSet.add(ele));
+      const setStateIdSet = new Set<AstNode>();
+      if(setStateNode){
+        this._deepFindIdentifier(setStateNode, ele => setStateIdSet.add(ele));
+      }
+      for (const stateId of stateIdSet) {
+        stateId._util.effectIds = new Set([...argsIdSet, ...setStateIdSet]);
+      }
+    }
+  }
+
+  static collectEffectIdOfUseMemo(node: AstNode){
+    const { id, init } = (node as unknown as { init: { arguments: AstNode[] }, id: AstNode });
+    const args = init.arguments;
+    const depsIdSet = new Set<AstNode>();
+    this._deepFindIdentifier(args[1], ele => depsIdSet.add(ele));
+    const memoIdSet = new Set<AstNode>();
+    this._deepFindIdentifier(id, ele => memoIdSet.add(ele));
+    for (const memoId of memoIdSet) {
+      memoId._util.effectIds = new Set([...depsIdSet, ...memoId._util.effectIds]);
+    }
+  }
+  static collectEffectIdOfUseCallback(node: AstNode) {
+    const { id, init } = (node as unknown as { init: { arguments: AstNode[] }, id: AstNode });
+    const args = init.arguments;
+    const depsIdSet = new Set<AstNode>();
+    this._deepFindIdentifier(args[1], ele => depsIdSet.add(ele));
+    if(id){
+      id._util.effectIds = new Set([...depsIdSet, ...id._util.effectIds]);
+    }
+  }
+
+  static collectEffectIdOfAssign(node: AstNode){
+    const { left, right } = node as unknown as { left: AstNode, right: AstNode };
+    const idSetOfRight = new Set<AstNode>();
+    this.deepFindIdOfExpression(right, id => idSetOfRight.add(id));
+    // todo 右边的 影响 左边的
+    if(left.type === "Identifier"){
+      const { left } = node as unknown as { left: AstNode };
+      left._util.effectIds = new Set([...idSetOfRight, ...left._util.effectIds]);
+    }
+    else {
+      const { left } = node as unknown as { left: AstNode };
+      const idSetOfLeft = new Set<AstNode>();
+      this.deepFindIdOfExpression(left, id => idSetOfLeft.add(id));
+      for (const id of idSetOfLeft) {
+        id._util.effectIds = new Set([...idSetOfRight, ...id._util.effectIds]);
+      }
+    };
+  }
+
+  static collectEffectIdOfUnaryUpdate(node: AstNode){
+    const { argument } = node as unknown as { argument: AstNode };
+    const idSetOfArgument = new Set<AstNode>();
+    this.deepFindIdOfExpression(argument, id => idSetOfArgument.add(id));
+    argument._util.effectIds = new Set([...argument._util.effectIds, ...idSetOfArgument]);
+  }
+
+  static isBodyArray(node: AstNode): node is ({ body: AstNode[] } & AstNode) {
+    return ["BlockStatement", "Program"].includes(node.type) && Array.isArray((node as unknown as { body: AstNode[] }).body);
+  }
+
+  static findExportIdentifiers(node: any, callback: (identifier: AstNode) => void){
+    if(!node){
+      return;
+    }
+    if(node.type === "ExportDefaultDeclaration" && node.declaration?.type === "Identifier"){
+      callback(node.declaration);
+      return;
+    }
+    if(node.type === "ExportNamedDeclaration" && Array.isArray(node.specifiers)){
+      for (const specifier of node.specifiers) {
+        if(specifier.type === "ExportSpecifier"){
+          const local = (specifier as unknown as { local: AstNode }).local;
+          callback(local);
+        }
+      }
+    }
+  }
+
+  static expressionTypeIsIdentifier(exp: AstNode|null): exp is AstNode & { type: "Identifier" } {
+    return exp?.type === "Identifier";
+  }
+
+  static deepFindIdOfExpression(exp: AstNode|null, callback: (identifier: AstNode) => void) {
+    if (!exp || exp.type === "ThisExpression") {
+      return;
+    }
+    this._deepFindIdOfExpression(exp, callback);
+  }
+
+  static _deepFindIdOfExpression(exp: AstNode|null, callback: (identifier: AstNode) => void){
+    if(!exp || exp.type === "ThisExpression"){
+      return;
+    }
+    if(exp.type === "SpreadElement"){
+      const { argument } = (exp as unknown as { argument: AstNode });
+      this.expressionTypeIsIdentifier(argument) && callback(argument);
+    }
+    else if(exp.type === "JSXSpreadChild"){
+      const expression = (exp as unknown as { expression: AstNode }).expression;
+      callback(expression);
+    }
+    else if(exp.type === "MemberExpression" || exp.type === "JSXMemberExpression"){
+      const rootIdentifier = this.getRootIdentifierOfMemberExpression(exp);
+      this.expressionTypeIsIdentifier(rootIdentifier) && callback(rootIdentifier);
+    }
+    else if(exp.type === "ObjectExpression"){
+      const properties = (exp as unknown as { properties: AstNode[]}).properties;
+      for (const property of properties) {
+        if(property.type === "SpreadElement"){
+          this._deepFindIdOfExpression(property, callback);
+        }
+        else {
+          const value = (property as unknown as { value: AstNode}).value;
+          this.expressionTypeIsIdentifier(value) ? callback(value) : this._deepFindIdOfExpression(value, callback);
+        }
+      }
+    }
+    else if(exp.type === "ArrayExpression"){
+      const elements = (exp as unknown as { elements: AstNode[]}).elements;
+      for (const element of elements) {
+        this.expressionTypeIsIdentifier(element) ? callback(element) : this._deepFindIdOfExpression(element, callback);
+      }
+    }
+    else if(exp.type === "ArrowFunctionExpression"){
+      const body = (exp as unknown as { body: AstNode}).body;
+      this.expressionTypeIsIdentifier(body) ? callback(body) : this._deepFindIdOfExpression(body, callback);
+    }
+    else if(exp.type === "CallExpression"){
+      const callee = (exp as unknown as { callee: AstNode}).callee;
+      this.expressionTypeIsIdentifier(callee) ? callback(callee) : this._deepFindIdOfExpression(callee, callback);
+
+      const args = (exp as unknown as { arguments: AstNode[]}).arguments;
+      for (const argument of args) {
+        this.expressionTypeIsIdentifier(argument) ? callback(argument) : this._deepFindIdOfExpression(argument, callback);
+      }
+    }
+    else if(exp.type === "AssignmentExpression" || exp.type === "BinaryExpression" || exp.type === "LogicalExpression"){
+      const {left, right} = (exp as unknown as { left: AstNode, right: AstNode});
+      [left, right].forEach(e => this.expressionTypeIsIdentifier(e) ? callback(e) : this._deepFindIdOfExpression(e, callback));
+    }
+    else if(exp.type === "UpdateExpression"){
+      const argument = (exp as unknown as { argument: AstNode}).argument;
+      this.expressionTypeIsIdentifier(argument) ? callback(argument) : this._deepFindIdOfExpression(argument, callback);
+    }
+    else if(exp.type === "SequenceExpression"){
+      const {expressions} = (exp as unknown as { expressions: AstNode[]});
+      for (const expression of expressions) {
+        this.expressionTypeIsIdentifier(expression) ? callback(expression) : this._deepFindIdOfExpression(expression, callback);
+      }
+    }
+    else if(exp.type === "ConditionalExpression"){
+      const { test, consequent, alternate } = (exp as unknown as { test: AstNode, consequent: AstNode, alternate: AstNode });
+      [test, consequent, alternate].forEach(e => this._deepFindIdOfExpression(e, callback));
+    }
+    else if(exp.type === "JSXExpressionContainer"){
+      const { expression } = exp as unknown as { expression: AstNode};
+      expression.name && callback(expression);
+    }
+    else if(exp.type === "JSXIdentifier"){
+      callback(exp);
+    }
+  }
+
+  static getRootIdentifierOfMemberExpression(memExp: AstNode): AstNode{
+    if(memExp.type === "MemberExpression" || memExp.type === "JSXMemberExpression"){
+      return this.getRootIdentifierOfMemberExpression((memExp as unknown as { object: AstNode}).object);
+    }
+    return memExp;
+  }
+
+  static findIdOfImport(node: AstNode, callback: (identifier: AstNode) => void){
+    const specifiers = (node as unknown as { specifiers: AstNode[]}).specifiers;
+    for (const specifier of specifiers) {
+      const local = (specifier as unknown as { local: AstNode}).local;
+      callback(local);
+    }
+  }
+
+  static findIdOfFunctionOrVariableOrClass(node: AstNode, callback: (identifier: AstNode) => void){
+    if(node.type === "FunctionDeclaration" || node.type === "ClassDeclaration"){
+      const id = (node as unknown as { id: AstNode|null }).id;
+      id && callback(id);
+    }
+    else if(node.type === "VariableDeclaration"){
+      this.findIdOfVariable(node, callback);
+    }
+  }
+  static findIdOfVariable(node: AstNode, callback: (identifier: AstNode) => void){
+    if(node.type !== "VariableDeclaration"){
+      return;
+    }
+    const declarations = (node as unknown as { declarations: AstNode[]}).declarations;
+    if(!Array.isArray(declarations)){
+      return;
+    }
+    for (const declaration of declarations) {
+      const id = (declaration as unknown as { id: AstNode|null}).id;
+      id && this._deepFindIdentifier(id, callback);
+    }
+  }
+
+  private static _deepFindIdentifier(id: AstNode|null, callback: (identifier: AstNode) => void){
+    if(!id){
+      return;
+    }
+    if(id.type === "Identifier"){
+      callback(id);
+    }
+    if(id.type === "ObjectPattern"){
+      const properties = (id as unknown as { properties: AstNode[]}).properties;
+      for (const property of properties) {
+        const value = (property as unknown as { value: AstNode}).value;
+        this._deepFindIdentifier(value, callback);
+      }
+    }
+    if(id.type === "ArrayPattern"){
+      const elements = (id as unknown as { elements: AstNode[]}).elements;
+      for (const element of elements) {
+        this._deepFindIdentifier(element, callback);
+      }
+    }
+    if(id.type === "RestElement"){
+      this._deepFindIdentifier((id as unknown as { argument: AstNode}).argument, callback);
+    }
+  }
+
+  static updateLoc(astNode: AstNode, extra: { mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>> }) {
+    const { _util, type, name } = astNode;
+    const { mapUuidToNode, mapFileLineToNodeSet } = extra;
+    const { nodeCollection, filePath } = _util;
+    _util.startLine = Math.min(...nodeCollection.map(n => n.loc?.start?.line!), astNode.loc?.start.line!);
+    _util.endLine = Math.max(...nodeCollection.map(n => n.loc?.end?.line!), astNode.loc?.end.line!);
+    _util.startColumn = Math.min(...nodeCollection.map(n => n.loc?.start?.column!), astNode.loc?.start.column!);
+    _util.endColumn = Math.max(...nodeCollection.map(n => n.loc?.end?.column!), astNode.loc?.end.column!);
+    _util.uuid = `${filePath}:${type}:${name}「${_util.startLine}:${_util.startColumn},${_util.endLine}:${_util.endColumn}」`;
+    mapUuidToNode.set(_util.uuid, astNode);
+
+    for (let i = _util.startLine; i <= _util.endLine; i++) {
+      mapFileLineToNodeSet.set(i, mapFileLineToNodeSet.get(i) || new Set());
+      mapFileLineToNodeSet.get(i)?.add(astNode);
+    }
+    if(astNode.type === "Program"){
+      mapUuidToNode.set(astNode.type, astNode);
+    }
+  }
+
+  static isValidArrayNodeCollect(astNode: any): astNode is AstNode[] {
+    return Array.isArray(astNode) && astNode.some(v => typeof v?.type === 'string')
+  }
+
+  static isValidNodeCollect(astNode: AstNode): astNode is AstNode {
+    return typeof astNode?.type === 'string';
+  }
+
+  static windowProperties = windowProperties
+
+  static isPropertyOfGlobal(node: AstNode): boolean {
+    return node.type === "Identifier" && !node._util.variableScope.length && this.windowProperties.includes(node.name!);
+  }
+
+  static getTopScopeNodesByLineNumberRange(mapFileLineToNodeSet: Map<number, Set<AstNode>>, lineNumberStart: number, lineNumberEnd: number){
+    const nodeSet = new Set<AstNode>();
+    for (let i = lineNumberStart; i <= lineNumberEnd; i++) {
+      const astNode = mapFileLineToNodeSet.get(i);
+      if(!astNode){
+        continue;
+      }
+      for(const nodeItem of astNode){
+        const { startLine, endLine } = nodeItem._util;
+        if(startLine >= lineNumberStart && endLine <= lineNumberEnd){
+          nodeSet.add(nodeItem);
+        }
+      }
+    }
+    const collections = [...nodeSet].map(e => e._util.nodeCollection).flat();
+    return [...nodeSet].filter(e => !collections.includes(e));
+  }
+
+  static getTopScopeNodesByLineNumber(mapFileLineToNodeSet: Map<number, Set<AstNode>>, lineNumber: number){
+    const astNode = mapFileLineToNodeSet.get(lineNumber);
+    const lineOfNodes = [...new Set(astNode)].filter((e: AstNode) => {
+      const { startLine, endLine } = e._util;
+      return startLine === lineNumber && endLine === lineNumber;
+    });
+    const collections = [...lineOfNodes].map(e => e._util.nodeCollection).flat();
+
+    return lineOfNodes.filter(e => !collections.includes(e));
+  }
+
+  static isSubNodeOfVariableDeclarator(node: AstNode){
+    const { ancestors } = node._util;
+    const typeList = ancestors.map(e => e.type);
+    const index = typeList.lastIndexOf("VariableDeclarator");
+    if(index === -1){
+      return false;
+    }
+    return ancestors.slice(index).every(ancestor => ["Identifier", "ObjectPattern", "ArrayPattern"].includes(ancestor.type));
+  }
+
+  static createScopeContent(node: AstNode){
+    return [node._util.filePath,":", node._util.startLine, "-", node._util.endLine, ":[", node.name || (node as any).value,"]"].join("")
+  }
+};

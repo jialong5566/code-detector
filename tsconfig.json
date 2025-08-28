@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "strict": true,
+    "declaration": true,
+    "skipLibCheck": true,
+    "baseUrl": "./",
+    "lib": [
+      "dom.iterable",
+      "esnext",
+      "dom",
+      "es2023.array"
+    ],
+    "allowSyntheticDefaultImports": true
+  }
+}
