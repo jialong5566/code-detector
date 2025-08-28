@@ -41,7 +41,7 @@ git diff master..$2 --unified=0 --output=git_diff.txt
 cd ..
 git clone $1 source
 `;
-const pluginFileContent = `import * as cb from "../../dist/cjs/index.js"
+const pluginFileContent = `import * as cb from "js-code-detector"
 
 export default async (api) => {
   const buildCallback = () => cb.umiPluginCallback(api);
