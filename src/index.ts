@@ -70,3 +70,7 @@ export async function getGitRepositoryAndBranch(){
     branchName: branch.stdout
   }
 }
+
+export function generateReport(jsonStr: string){
+  writeFileSync(join(process.cwd(), `${dayjs().format('YYYYMDD_HHmm')}_${jsonName}`), jsonStr, { encoding: 'utf-8', flag: 'w' });
+}

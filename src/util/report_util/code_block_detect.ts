@@ -118,6 +118,12 @@ function pushBlockReport(blockReports: BlockReport[], blockReport: BlockReport, 
       blockReport[key] = blockReport[key].filter(path => !sameNames.includes(path));
     });
   }
+  if(blockReport.kind.startsWith("Other:")){
+    (['added', 'removed'] as const).forEach(key => {
+      const tailElements = blockReport[key].map(ele => ele.split(":").at(-1)!).filter(Boolean);
+      blockReport[key] = [...new Set(tailElements)];
+    });
+  }
 
   const addedEffectsList = mapNodePath(blockReport.addedEffects);
   const removedEffectsList = mapNodePath(blockReport.removedEffects);

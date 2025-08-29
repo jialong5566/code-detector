@@ -2,12 +2,14 @@ import {GitDiffDetail} from "./format_git_diff_content";
 import codeBlockDetect, {BlockReport} from "./report_util/code_block_detect";
 import getAstKitByFilePath from "./ast_util/getAstKitByFilePath";
 import AstUtil from "./ast_util/AstUtil";
+import {fileIdentifierDetect} from "./report_util/file_identifier_detect";
 
 type DetectReport = {
   filePath: string;
   type: "modify" | "add" | "delete";
   // 主要针对 add 和 delete 类型的文件，不包含 modify
   filesDependsOnMe: string[];
+  dangerIdentifiers: string[];
   blockReports: BlockReport[];
 };
 
@@ -31,10 +33,12 @@ export function createDetectReport(arg: Arg){
         filePath,
         type,
         filesDependsOnMe,
+        dangerIdentifiers: [],
         blockReports: []
       }
       reports.push(reportItem);
     }
+    reportItem.dangerIdentifiers = fileIdentifierDetect(filePath, absPathPrefix);
     if(type === "modify"){
       codeBlockDetect({ gitDiffItem: item, absPathPrefix, blockReports: reportItem.blockReports });
     }

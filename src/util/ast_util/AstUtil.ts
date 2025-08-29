@@ -1,4 +1,5 @@
 import { windowProperties } from "./windowProperties";
+import { intrinsicElements, standardAttributes } from "./intrinsicElements";
 export interface AstNode {
   type: string;
   name?: string;
@@ -209,13 +210,13 @@ export default class AstUtil {
         const firstPick = sameNameIds[0];
         if(firstPick){
           firstPick._util.effectIds.add(dependenceId);
-          this.markDependenceIdAsCrossScope(dependenceId, firstPick);
+          this.markDependenceIdCrossScope(dependenceId, firstPick);
         }
       }
     }
   }
 
-  static markDependenceIdAsCrossScope(node: AstNode, scopeId: AstNode){
+  static markDependenceIdCrossScope(node: AstNode, scopeId: AstNode){
     const isParamsElement = scopeId._util.parentProperty === "params";
     const isCalleeId = node._util.parent?.type === "CallExpression" && node._util.parentProperty === "callee"
     if(isParamsElement && isCalleeId){
@@ -478,6 +479,21 @@ export default class AstUtil {
     else if(exp.type === "JSXIdentifier"){
       callback(exp);
     }
+    else if(exp.type === "JSXAttribute"){
+      const value = (exp as unknown as { value: AstNode|null}).value;
+      value && this._deepFindIdOfExpression(value, callback);
+    }
+    else if(exp.type === "JSXElement"){
+      const openingElement = (exp as unknown as { openingElement: AstNode}).openingElement;
+      this._deepFindIdOfExpression(openingElement, callback);
+    }
+    else if(exp.type === "JSXOpeningElement"){
+      const { name, attributes } = exp as unknown as { name: AstNode, attributes: AstNode[] };
+      this._deepFindIdOfExpression(name, callback);
+      for (const attribute of attributes) {
+        this._deepFindIdOfExpression(attribute, callback);
+      }
+    }
   }
 
   static getRootIdentifierOfMemberExpression(memExp: AstNode): AstNode{
@@ -572,9 +588,22 @@ export default class AstUtil {
   }
 
   static windowProperties = windowProperties
+  static intrinsicElements = intrinsicElements
+  static standardAttributes = standardAttributes
 
+  static isUntrackedId(id: AstNode){
+    return id._util.variableScope.length === 0 && !this.isPropertyOfGlobal(id) && !this.isIntrinsicElement(id) && !this.isStandardAttribute(id)
+  }
   static isPropertyOfGlobal(node: AstNode): boolean {
     return node.type === "Identifier" && !node._util.variableScope.length && this.windowProperties.includes(node.name!);
+  }
+
+  static isIntrinsicElement(node: AstNode){
+    return (node.type === "JSXIdentifier" && node._util.parent?.type && ["JSXOpeningElement", "JSXClosingElement"].includes(node._util.parent.type) && this.intrinsicElements.includes(node.name!))
+  }
+
+  static isStandardAttribute(node: AstNode){
+    return (node._util.parent!.type === "JSXAttribute" && this.standardAttributes.includes(node.name!))
   }
 
   static getTopScopeNodesByLineNumberRange(mapFileLineToNodeSet: Map<number, Set<AstNode>>, lineNumberStart: number, lineNumberEnd: number){
