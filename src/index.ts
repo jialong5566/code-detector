@@ -6,8 +6,9 @@ import {writeFileSync} from "fs";
 import {createDetectReport} from "./util/report_util";
 import {execa, chalk} from "@umijs/utils";
 import dayjs from "dayjs";
+import {createMdByJson} from "./util/report_util/createMdByJson";
 
-const jsonName = "git_diff_report.json";
+const jsonName = "git_diff_report.md";
 
 export async function umiPluginCallback(api: any){
   const diff_txt = readFileSync(join(api.cwd, "git_diff.txt"), "utf-8");
@@ -22,7 +23,8 @@ export async function umiPluginCallback(api: any){
   const usingFileNoPrefix = usingFiles.map(item => item.filePath.replace(absPathPrefix, ""));
   const groupGitDiffLines = gitDiffDetail.filter(item => usingFileNoPrefix.includes(item.filePath));
   const reports = createDetectReport({ groupGitDiffLines, tree, absPathPrefix });
-  writeFileSync(join(api.cwd, jsonName), JSON.stringify(reports, null, 2), { encoding: 'utf-8', flag: 'w' });
+  const mdContent = createMdByJson(reports);
+  writeFileSync(join(api.cwd, jsonName), mdContent, { encoding: 'utf-8', flag: 'w' });
 }
 
 const shellFileContent = `#!/bin/sh

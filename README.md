@@ -21,9 +21,9 @@ $ npm run build
 
 ## 使用
 
-项目安装 js-code-detector
-package.json 中添加 scripts 命令 ```npx detect```
-执行该命令可在当前项目目录下生成报告
+1.项目安装 **js-code-detector**
+2.package.json 中添加 scripts 命令 ```detect```
+3.执行该命令可在当前项目目录下生成报告
 
 ## 报告说明
 - filePath 文件路径

@@ -4,7 +4,7 @@ import getAstKitByFilePath from "./ast_util/getAstKitByFilePath";
 import AstUtil from "./ast_util/AstUtil";
 import {fileIdentifierDetect} from "./report_util/file_identifier_detect";
 
-type DetectReport = {
+export type DetectReport = {
   filePath: string;
   type: "modify" | "add" | "delete";
   // 主要针对 add 和 delete 类型的文件，不包含 modify
