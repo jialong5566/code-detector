@@ -118,8 +118,7 @@ export default class Core {
       const { filePath, fileContent } = file;
       const [errorMsg, parsedNode] = FileUtil.parseFile(filePath, fileContent);
       if(parsedNode){
-        // @ts-ignore
-        AstUtil.deepFirstTravel(parsedNode, {
+        AstFeatUtil.deepFirstTravel(parsedNode as any, {
           mapHashKeyToTopLevelNode,
           nodeTypeSet
         }, filePath);
