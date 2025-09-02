@@ -1,0 +1,5 @@
+export const AST_NODE_FEATURE_LEVEL = {
+  LOOSE: "LOOSE",
+  NORMAL: "NORMAL",
+  EXACT: "EXACT"
+}

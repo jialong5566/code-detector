@@ -7,6 +7,9 @@ import {createDetectReport} from "./util/report_util";
 import {execa, chalk} from "@umijs/utils";
 import dayjs from "dayjs";
 import {createMdByJson} from "./util/report_util/createMdByJson";
+import { readDirFiles } from "@umijs/utils";
+import {readSrcFiles} from "./util/shared/readDirFiles";
+import Core from "./util/ast_util/Core";
 
 const jsonName = "git_diff_report.md";
 
@@ -75,4 +78,11 @@ export async function getGitRepositoryAndBranch(){
 
 export function generateReport(jsonStr: string){
   writeFileSync(join(process.cwd(), `${dayjs().format('YYYYMDD_HHmm')}_${jsonName}`), jsonStr, { encoding: 'utf-8', flag: 'w' });
+}
+
+export async function sameCodeDetect(dirOfCwd?: string) {
+  const filesAndContent = await readSrcFiles(dirOfCwd);
+  const { nodeContentGroupList } = Core.investigate(filesAndContent);
+  const md = Core.createMarkdownFile(nodeContentGroupList.slice(0, 5));
+  writeFileSync(join(process.cwd(), `${dayjs().format('YYYYMDD_HHmm')}_same_code.md`), md, { encoding: 'utf-8', flag: 'w' });
 }

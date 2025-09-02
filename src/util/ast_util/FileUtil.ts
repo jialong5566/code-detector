@@ -1,6 +1,6 @@
 import * as babelParse from "@babel/parser";
 import * as vueParse from "vue-eslint-parser";
-import {AstNode} from "./AstUtil";
+import {AstFeatNode} from "./AstFeatUtil";
 
 
 export const extensionsOfJs = ['.js', '.jsx', '.ts', '.tsx'];
@@ -96,7 +96,7 @@ export default class FileUtil {
     }));
   }
 
-  static parseFile(filePath: string, fileContent: string): [string, Omit<AstNode, '_util'>|null]{
+  static parseFile(filePath: string, fileContent: string): [string, Omit<AstFeatNode, '_util'>|null]{
     try {
       if(filePath.endsWith('.vue')){
         return ["", this.parseVue(filePath, fileContent)];

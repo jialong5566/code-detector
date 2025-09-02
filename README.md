@@ -1,4 +1,4 @@
-# code-detector
+# js-code-detector
 
 [![NPM version](https://img.shields.io/npm/v/code-detector.svg?style=flat)](https://npmjs.com/package/code-detector)
 [![NPM downloads](http://img.shields.io/npm/dm/code-detector.svg?style=flat)](https://npmjs.com/package/code-detector)
