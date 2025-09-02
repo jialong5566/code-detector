@@ -30,7 +30,7 @@ export default class Core {
       nodeContentGroupList,
       nodeGroupList,
       countList: nodeContentGroupList.map(e => e.nodeCount).sort((a, b) => a - b),
-      depthList: nodeContentGroupList.map(e => e.depth).sort((a, b) => a - b)
+      depthList: nodeContentGroupList.map(e => e.depth).sort((a, b) => b - a)
     };
   }
 

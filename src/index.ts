@@ -83,10 +83,9 @@ export function generateReport(jsonStr: string){
 export async function sameCodeDetect(dirOfCwd?: string) {
   const filesAndContent = await readSrcFiles(dirOfCwd);
   const { nodeContentGroupList, depthList } = Core.investigate(filesAndContent);
-  let validDepthList = depthList.filter(e => e > 3);
-  if(validDepthList.length === 0){
-    validDepthList = depthList.slice(0, 1);
-  }
-  const md = Core.createMarkdownFile(nodeContentGroupList.filter(e => validDepthList.includes(e.depth)).slice(0, 5));
+  const top3DepthsSet = [...new Set(depthList)].slice(0, 3);
+  const validDepthList = depthList.filter(e => top3DepthsSet.includes(e));
+  const validContentList = nodeContentGroupList.filter(e => validDepthList.includes(e.depth)).sort((a, b) => b.depth - a.depth);
+  const md = Core.createMarkdownFile(validContentList);
   writeFileSync(join(process.cwd(), `${dayjs().format('YYYYMDD_HHmm')}_same_code.md`), md, { encoding: 'utf-8', flag: 'w' });
 }
