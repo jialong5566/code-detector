@@ -1,31 +1,28 @@
 # js-code-detector
 
-[![NPM version](https://img.shields.io/npm/v/code-detector.svg?style=flat)](https://npmjs.com/package/code-detector)
-[![NPM downloads](http://img.shields.io/npm/dm/code-detector.svg?style=flat)](https://npmjs.com/package/code-detector)
-
-## Install
-
-```bash
-$ yarn install
-```
-
-```bash
-$ npm run dev
-$ npm run build
-```
-
 ## 说明
+1.重复代码检测工具, 支持 React、Vue 项目
+2.git分支对比报告, 目前适用于 umi4.x 版本的项目
 
-包用于检测项目当前分支 与 master分支的差异，并出具报告，展示代码改动的影响
-目前适用于 umi4.x 版本的项目
 
-## 使用
+## 重复代码检测使用
 
 1.项目安装 **js-code-detector**
-2.package.json 中添加 scripts 命令 ```detect```
-3.执行该命令可在当前项目目录下生成报告
+2.package.json 中添加 scripts 命令 ```sameCodeDetect```, 例如：```"same": "sameCodeDetect"```
+3.执行该命令可在当前项目目录下生成报告, ```npm run same```
 
-## 报告说明
+## git分支对比报告使用
+
+1.项目安装 **js-code-detector**
+2.package.json 中添加 scripts 命令 ```detect```, 例如：```"detect": "detect"```
+3.执行该命令可在当前项目目录下生成报告, ```npm run detect```
+
+## 重复代码检测报告说明
+1.所有相似的代码片段为一组，每组有2个及以上的代码片段
+2.每组代码片段都有对应的文件路径，以及所在的行范围
+
+
+## git分支对比报告说明
 - filePath 文件路径
 - type 改动类型 add remove modify
 - filesDependsOnMe 依赖当前文件的文件
