@@ -82,7 +82,11 @@ export function generateReport(jsonStr: string){
 
 export async function sameCodeDetect(dirOfCwd?: string) {
   const filesAndContent = await readSrcFiles(dirOfCwd);
-  const { nodeContentGroupList } = Core.investigate(filesAndContent);
-  const md = Core.createMarkdownFile(nodeContentGroupList.slice(0, 5));
+  const { nodeContentGroupList, depthList } = Core.investigate(filesAndContent);
+  let validDepthList = depthList.filter(e => e > 3);
+  if(validDepthList.length === 0){
+    validDepthList = depthList.slice(0, 1);
+  }
+  const md = Core.createMarkdownFile(nodeContentGroupList.filter(e => validDepthList.includes(e.depth)).slice(0, 5));
   writeFileSync(join(process.cwd(), `${dayjs().format('YYYYMDD_HHmm')}_same_code.md`), md, { encoding: 'utf-8', flag: 'w' });
 }
