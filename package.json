@@ -1,6 +1,6 @@
 {
   "name": "js-code-detector",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "",
   "main": "dist/cjs/index.js",
   "types": "dist/cjs/index.d.ts",
@@ -22,6 +22,7 @@
   ],
   "bin": {
     "detect": "bin/detect.js",
+    "gitDiffDetect": "bin/gitDiffDetect.js",
     "sameCodeDetect": "bin/sameCodeDetect.js"
   },
   "publishConfig": {
