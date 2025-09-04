@@ -7,7 +7,6 @@ import {createDetectReport} from "./util/report_util";
 import {execa, chalk} from "@umijs/utils";
 import dayjs from "dayjs";
 import {createMdByJson} from "./util/report_util/createMdByJson";
-import { readDirFiles } from "@umijs/utils";
 import {readSrcFiles} from "./util/shared/readDirFiles";
 import Core from "./util/ast_util/Core";
 

@@ -45,6 +45,7 @@ export function createDetectReport(arg: Arg){
   });
   return reports.map(report => {
     const filePath = report.filePath;
+    // todo 过滤 ext
     const astKit = getAstKitByFilePath(filePath, absPathPrefix);
     const allNodes = new Map([...astKit.mapUuidToNode.values()].map(ele => [AstUtil.getNodePath(ele), ele]));
     return {

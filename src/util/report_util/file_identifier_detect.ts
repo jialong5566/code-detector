@@ -3,7 +3,10 @@ import AstUtil from "../ast_util/AstUtil";
 
 export function fileIdentifierDetect(filePath: string, absPathPrefix: string){
   const { mapUuidToNode } = getAstKitByFilePath(filePath, absPathPrefix);
-  const programNode = mapUuidToNode.get("Program")!;
+  const programNode = mapUuidToNode.get("Program");
+  if(!programNode){
+    return [];
+  }
   const { dependenceIds } = programNode._util;
   const ids = [...dependenceIds].filter(id => {
     return AstUtil.isUntrackedId(id) || id._util.crossScope.size > 0;

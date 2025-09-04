@@ -65,23 +65,25 @@ export default function codeBlockDetect(arg: Arg){
   const filePathOfOld = join(process.cwd(), '..', 'source', filePath);
   const { mapFileLineToNodeSet: mapFileLineToNodeSetOld } = getAstKitByFilePath(filePathOfOld, absPathPrefix);
   // 当前文件的 根AST
-  const programNode = mapUuidToNode.get("Program")!;
-  const lineNumberStartNew = Number(startLineOfNew);
-  const lineNumberEndNew = lineNumberStartNew + items.filter(item => item.startsWith("+")).length - 1;
-  const lineNumberStartOld = Number(startLineOfOld);
-  const lineNumberEndOld = lineNumberStartOld + items.filter(item => item.startsWith("-")).length - 1;
-  // 获取从 startLineOfNew 到 lineNumberEndNew 的所有 新增的 顶层节点
-  const addNodes = AstUtil.getTopScopeNodesByLineNumberRange(mapFileLineToNodeSet, lineNumberStartNew, lineNumberEndNew);
-  // 获取从 startLineOfOld 到 lineNumberEndOld 的所有 删除的 顶层节点
-  const removeNodes = AstUtil.getTopScopeNodesByLineNumberRange(mapFileLineToNodeSetOld, lineNumberStartOld, lineNumberEndOld);
+  const programNode = mapUuidToNode.get("Program");
+  if(programNode){
+    const lineNumberStartNew = Number(startLineOfNew);
+    const lineNumberEndNew = lineNumberStartNew + items.filter(item => item.startsWith("+")).length - 1;
+    const lineNumberStartOld = Number(startLineOfOld);
+    const lineNumberEndOld = lineNumberStartOld + items.filter(item => item.startsWith("-")).length - 1;
+    // 获取从 startLineOfNew 到 lineNumberEndNew 的所有 新增的 顶层节点
+    const addNodes = AstUtil.getTopScopeNodesByLineNumberRange(mapFileLineToNodeSet, lineNumberStartNew, lineNumberEndNew);
+    // 获取从 startLineOfOld 到 lineNumberEndOld 的所有 删除的 顶层节点
+    const removeNodes = AstUtil.getTopScopeNodesByLineNumberRange(mapFileLineToNodeSetOld, lineNumberStartOld, lineNumberEndOld);
 
-  iterateNodes(addNodes, "add", { blockReports, programNode });
-  iterateNodes(removeNodes, "remove", { blockReports, programNode });
-  const lastReport = blockReports.at(-1);
-  if(lastReport){
-    lastReport.diff_txt = items;
-    lastReport.topAdded = addNodes;
-    lastReport.topRemoved = removeNodes;
+    iterateNodes(addNodes, "add", { blockReports, programNode });
+    iterateNodes(removeNodes, "remove", { blockReports, programNode });
+    const lastReport = blockReports.at(-1);
+    if(lastReport){
+      lastReport.diff_txt = items;
+      lastReport.topAdded = addNodes;
+      lastReport.topRemoved = removeNodes;
+    }
   }
   blockReports.push(createBlockReport('Never'));
 };

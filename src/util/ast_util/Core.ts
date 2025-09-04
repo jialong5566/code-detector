@@ -34,14 +34,14 @@ export default class Core {
     };
   }
 
-  static getFileContentByLine(map: MapFilePathToDetail, filePath: string, start: number, end: number){
+  private static getFileContentByLine(map: MapFilePathToDetail, filePath: string, start: number, end: number){
     const fixedStart = Math.max(start - 1, 0);
     const content = map.get(filePath)!.lines.slice(fixedStart, end ).join("\n");
     const location =  `${filePath}: from line ${start} to line ${end}`;
     return { location, content };
   }
 
-  static getListOfGroup(mapFilePathToDetail: MapFilePathToDetail, validFullNodeList: ReturnType<typeof Core.getListOfNodeGroup>['nodeGroupList']){
+  private static getListOfGroup(mapFilePathToDetail: MapFilePathToDetail, validFullNodeList: ReturnType<typeof Core.getListOfNodeGroup>['nodeGroupList']){
     const listOfGroup:  {
       list: { astNode: AstFeatNode,location: string, content: string }[],
       listOfNodeInfo: (typeof validFullNodeList)[number]["listOfNodeInfo"],
@@ -110,7 +110,7 @@ export default class Core {
     return listOfGroup;
   }
 
-  static createMapHashKeyToAstNodeSet(fileList: FileSegment[]){
+  private static createMapHashKeyToAstNodeSet(fileList: FileSegment[]){
     const mapHashKeyToTopLevelNode: MapHashKeyToAstNodeSet = new Map();
     const nodeTypeSet = new Set<string>();
     const errorList: string[] = [];
@@ -132,7 +132,7 @@ export default class Core {
     return [mapHashKeyToTopLevelNode, nodeTypeSet, errorList] as const;
   }
 
-  static getListOfNodeGroup(mapHashKeyToNodeSet: MapHashKeyToAstNodeSet){
+  private static getListOfNodeGroup(mapHashKeyToNodeSet: MapHashKeyToAstNodeSet){
     const nodeGroupList: {
       list: AstFeatNode[],
       listOfNodeInfo: ReturnType<typeof AstFeatUtil.spreadSubNode>,

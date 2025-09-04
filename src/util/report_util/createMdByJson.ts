@@ -15,10 +15,10 @@ function reportItemToMd(report: ReturnType<typeof createDetectReport>[number]){
   const { filePath, filesDependsOnMe, type, dangerIdentifiers, blockReports } = report;
   return [
       `## ${filePath}`,
-      `- 类型: ${mapReportType[type]}`,
-      filesDependsOnMe.length > 0 ? `- 依赖${filePath}的文件` : '',
-      ...filesDependsOnMe.map((file, i) => `${i + 1}. ${file}`),
-      dangerIdentifiers.length > 0 ? `- 重点检查使用的变量` : '',
+      `### 类型: ${mapReportType[type]}`,
+      filesDependsOnMe.length > 0 ? `### 依赖${filePath}的文件` : '',
+      ...filesDependsOnMe.map((file) => `- ${file}`),
+      dangerIdentifiers.length > 0 ? `### 重点检查使用的变量` : '',
       dangerIdentifiers.length > 0 ? `> ${dangerIdentifiers.join(', ')}` : '',
       blockReports.length > 0 ? `### 代码块分析` : '',
       ...blockReports.map(blockReportToMd),
