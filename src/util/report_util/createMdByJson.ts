@@ -8,7 +8,8 @@ const mapReportType: Record<DetectReport["type"], string> = {
 
 
 export function createMdByJson(report: ReturnType<typeof createDetectReport>){
-  return report.map(reportItemToMd).join('\n\n\n');
+  const allFiles =  `# 文件汇总\n${report.map(r => `- ${r.filePath}`).join('\n')}\n\n`;
+  return allFiles + report.map(reportItemToMd).join('\n\n\n');
 }
 
 function reportItemToMd(report: ReturnType<typeof createDetectReport>[number]){
@@ -16,16 +17,14 @@ function reportItemToMd(report: ReturnType<typeof createDetectReport>[number]){
   return [
       `## ${filePath}`,
       `### 类型: ${mapReportType[type]}`,
-      filesDependsOnMe.length > 0 ? `### 依赖${filePath}的文件` : '',
-      ...filesDependsOnMe.map((file) => `- ${file}`),
-      dangerIdentifiers.length > 0 ? `### 重点检查使用的变量` : '',
-      dangerIdentifiers.length > 0 ? `> ${dangerIdentifiers.join(', ')}` : '',
-      blockReports.length > 0 ? `### 代码块分析` : '',
+      filesDependsOnMe.length > 0 ? `### 所影响的文件\n${filesDependsOnMe.map((files) => `- ${files.join('、')}`).join('\n')}` : '',
+      dangerIdentifiers.length > 0 ? `### 重点检查使用的变量\n> ${dangerIdentifiers.join(', ')}` : '',
+      blockReports.length > 0 ? `### 对比分析 共${blockReports.length}处` : '',
       ...blockReports.map(blockReportToMd),
   ].filter(Boolean).join("\n\n");
 }
 
-function blockReportToMd(block: ReturnType<typeof createDetectReport>[number]['blockReports'][number]){
+function blockReportToMd(block: ReturnType<typeof createDetectReport>[number]['blockReports'][number], index: number){
   const {
     kind,
     diff_txt,
@@ -35,16 +34,14 @@ function blockReportToMd(block: ReturnType<typeof createDetectReport>[number]['b
     removedEffects,
   } = block;
   return [
-      `#### 修改分类: ${kind}`,
-      `- 原始diff内容`,
-      `\`\`\`txt\n${diff_txt.join('\n')}\n\`\`\``,
-      added.length > 0 ? `- 新增标识符` : '',
-      added.length > 0 ? `> ${added.join(', ')}` : '',
-      addedEffects.length > 0 ? `- 新增标识符影响` : '',
-      addedEffects.map(({ causeBy, effects}) => `> ${causeBy}相关: ${effects.join()}`).join('\n\n'),
-      removed.length > 0 ? `- 删除标识符` : '',
-      removed.length > 0 ? `> ${removed.join(', ')}` : '',
-      removedEffects.length > 0 ? `- 删除标识符影响` : '',
-      removedEffects.map(({ causeBy, effects}) => `> ${causeBy}相关: ${effects.join()}`).join('\n\n'),
+    `### 对比${index + 1}分析`,
+    `- 原始diff内容\n\`\`\`txt\n${diff_txt.join('\n')}\n\`\`\``,
+    `#### 修改分类: ${kind}`,
+    added.length > 0 ? `- 新增标识符\n> ${added.join(', ')}` : '',
+    addedEffects.length > 0 ? `- 新增标识符影响\n` : '',
+    addedEffects.map(({ causeBy, effects}) => `> ${causeBy}相关: ${effects.join()}`).join('\n\n'),
+    removed.length > 0 ? `- 删除标识符\n> ${removed.join(', ')}` : '',
+    removedEffects.length > 0 ? `- 删除标识符影响` : '',
+    removedEffects.map(({ causeBy, effects}) => `> ${causeBy}相关: ${effects.join()}`).join('\n\n'),
   ].filter(Boolean).join("\n\n");
 }

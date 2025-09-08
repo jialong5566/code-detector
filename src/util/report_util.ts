@@ -3,12 +3,13 @@ import codeBlockDetect, {BlockReport} from "./report_util/code_block_detect";
 import getAstKitByFilePath from "./ast_util/getAstKitByFilePath";
 import AstUtil from "./ast_util/AstUtil";
 import {fileIdentifierDetect} from "./report_util/file_identifier_detect";
+import getFileDepends from "./report_util/getFileDepends";
 
 export type DetectReport = {
   filePath: string;
   type: "modify" | "add" | "delete";
   // 主要针对 add 和 delete 类型的文件，不包含 modify
-  filesDependsOnMe: string[];
+  filesDependsOnMe: string[][];
   dangerIdentifiers: string[];
   blockReports: BlockReport[];
 };
@@ -23,10 +24,9 @@ export function createDetectReport(arg: Arg){
   const { groupGitDiffLines, tree, absPathPrefix } = arg;
 
   const reports: DetectReport[] = [];
-  const entries = Object.entries(tree);
-  groupGitDiffLines.forEach(item => {
+  groupGitDiffLines.forEach((item, index) => {
     const {filePath, type} = item;
-    const filesDependsOnMe = entries.filter((entry) =>entry[1].includes(filePath)).map(e => e[0]);
+    const filesDependsOnMe = getFileDepends(filePath, tree);
     let reportItem = reports.find(e => e.filePath === filePath);
     if(!reportItem){
       reportItem = {
@@ -40,7 +40,7 @@ export function createDetectReport(arg: Arg){
     }
     reportItem.dangerIdentifiers = fileIdentifierDetect(filePath, absPathPrefix);
     if(type === "modify"){
-      codeBlockDetect({ gitDiffItem: item, absPathPrefix, blockReports: reportItem.blockReports });
+      codeBlockDetect({ gitDiffItem: item, absPathPrefix, blockReports: reportItem.blockReports, index });
     }
   });
   return reports.map(report => {

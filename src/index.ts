@@ -25,6 +25,7 @@ export async function umiPluginCallback(api: any){
   const usingFileNoPrefix = usingFiles.map(item => item.filePath.replace(absPathPrefix, ""));
   const groupGitDiffLines = gitDiffDetail.filter(item => usingFileNoPrefix.includes(item.filePath));
   const reports = createDetectReport({ groupGitDiffLines, tree, absPathPrefix });
+  writeFileSync(join(api.cwd, "reports.json"), JSON.stringify(reports, null, 2), { encoding: 'utf-8', flag: 'w' });
   const mdContent = createMdByJson(reports);
   writeFileSync(join(api.cwd, jsonName), mdContent, { encoding: 'utf-8', flag: 'w' });
 }
@@ -118,7 +119,7 @@ export async function gitDiffDetect() {
   const mdFileName = `${dayjs().format('YYYYMDD_HHmm')}_${jsonName}`;
   writeFileSync(join(process.cwd(), mdFileName), content, { encoding: 'utf-8', flag: 'w' });
   logger.info("报告完成: " + mdFileName);
-  rimraf(join(process.cwd(), today), () => {
-    logger.info("临时目录已删除");
-  });
+  // rimraf(join(process.cwd(), today), () => {
+  //   logger.info("临时目录已删除");
+  // });
 }
