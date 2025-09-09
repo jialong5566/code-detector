@@ -6,15 +6,14 @@ import getAstKitByFilePath from "../ast_util/getAstKitByFilePath";
 import AstUtil, {AstNode} from "../ast_util/AstUtil";
 import {GitDiffDetail} from "../format_git_diff_content";
 
-type BlockReportKind = "Import"|"Declaration"|"Assignment"|"SelfUpdate"|"Invoke"|"Other"|"Never";
+type BlockReportKind = "Import"|"Declaration"|"Assignment"|"SelfUpdate"|"Invoke"|"Other";
 type EffectItem = {
   causeBy: AstNode,
   effects: AstNode[],
 }
-export type BlockReport = {
-  index: number,
-  kindList: BlockReportKind[],
-  diff_txt: string[];
+
+type BlockReportInfoItem = {
+  kind: BlockReportKind,
   topAdded: AstNode[],
   topRemoved: AstNode[],
   added: string[],
@@ -25,11 +24,20 @@ export type BlockReport = {
   removedStillUsing: string[],
   removedEffects: EffectItem[],
 };
+export type BlockReport = {
+  index: number,
+  diff_txt: string[];
+  infos: BlockReportInfoItem[];
+};
 
 const createBlockReport = (kind: BlockReportKind, index: number): BlockReport => ({
   index,
-  kindList: [kind],
   diff_txt: [],
+  infos: []
+});
+
+const createBlockReportInfoItem = (kind: BlockReportKind): BlockReportInfoItem => ({
+  kind,
   topAdded: [],
   topRemoved: [],
   added: [],
@@ -41,11 +49,17 @@ const createBlockReport = (kind: BlockReportKind, index: number): BlockReport =>
   removedEffects: [],
 });
 
-const findOrCreateBlockReport = (blockReports: BlockReport[], kind: BlockReportKind, index: number, diff_txt: string[]): BlockReport => {
+const findOrCreateBlockReport = (blockReports: BlockReport[], kind: BlockReportKind, index: number, diff_txt: string[]): BlockReportInfoItem => {
   const res = blockReports.find(item => item.index === index) || createBlockReport(kind, index);
   res.diff_txt = diff_txt;
-  res.kindList = res.kindList.includes(kind) ? res.kindList : [...res.kindList, kind];
-  return res;
+  if(!blockReports.includes(res)){
+    blockReports.push(res);
+  }
+  const tmpInfo = res.infos.find(info => info.kind === kind) || createBlockReportInfoItem(kind);
+  if(!res.infos.includes(tmpInfo)){
+    res.infos.push(tmpInfo);
+  }
+  return tmpInfo;
 }
 
 type Arg = {
@@ -75,7 +89,6 @@ export default function codeBlockDetect(arg: Arg){
     iterateNodes(addNodes, "add", { blockReports, programNode, diff_txt: items }, index);
     iterateNodes(removeNodes, "remove", { blockReports, programNode, diff_txt: items }, index);
   }
-  blockReports.push(createBlockReport('Never', NaN));
 };
 
 function getPathsOfNode(topScopeNodes: AstNode[]): string[]{
@@ -91,7 +104,7 @@ function getPathsOfNode(topScopeNodes: AstNode[]): string[]{
   return [...new Set(paths)];
 }
 
-function mapNodePath(list: BlockReport['addedEffects']){
+function mapNodePath(list: BlockReportInfoItem['addedEffects']){
   return list.map(item => ({ ...item, effects: item.effects.map(ele => ({ ele, path: AstUtil.getNodePath(ele) })) }))
 }
 
@@ -103,21 +116,21 @@ function extractEffectItem(list: {effects: {path: string, ele: AstNode}[], cause
   return list.map(e => ({ ...e, effects: e.effects.map(item => item.ele) }))
 }
 
-function pushBlockReport(blockReports: BlockReport[], blockReport: BlockReport, programNode: AstNode, index: number){
-  if(blockReport.kindList.includes("Other")){
+function pushBlockReport(blockReportInfoItem: BlockReportInfoItem, programNode: AstNode, index: number){
+  if(blockReportInfoItem.kind === "Other"){
     (['added', 'removed'] as const).forEach(key => {
-      const tailElements = blockReport[key].map(ele => ele.split(":").at(-1)!).filter(Boolean);
-      blockReport[key] = [...new Set(tailElements)];
+      const tailElements = blockReportInfoItem[key].map(ele => ele.split(":").at(-1)!).filter(Boolean);
+      blockReportInfoItem[key] = [...new Set(tailElements)];
     });
   }
-  const sameNames = blockReport.added.filter(path => blockReport.removed.includes(path));
+  const sameNames = blockReportInfoItem.added.filter(path => blockReportInfoItem.removed.includes(path));
   if(sameNames.length){
     (['added', 'removed'] as const).forEach(key => {
-      blockReport[key] = blockReport[key].filter(path => !sameNames.includes(path));
+      blockReportInfoItem[key] = blockReportInfoItem[key].filter(path => !sameNames.includes(path));
     });
   }
-  const addedEffectsList = mapNodePath(blockReport.addedEffects);
-  const removedEffectsList = mapNodePath(blockReport.removedEffects);
+  const addedEffectsList = mapNodePath(blockReportInfoItem.addedEffects);
+  const removedEffectsList = mapNodePath(blockReportInfoItem.removedEffects);
   const addedEffectsPaths = addedEffectsList.map(item => item.effects.map(({ path }) => path)).flat();
   const removedEffectsPaths = removedEffectsList.map(item => item.effects.map(({ path }) => path)).flat();
   const sameEffectsPaths = addedEffectsPaths.filter(path => removedEffectsPaths.includes(path));
@@ -125,11 +138,8 @@ function pushBlockReport(blockReports: BlockReport[], blockReport: BlockReport, 
     const addedEffects = filterBySamePathAndLen(addedEffectsList, sameEffectsPaths);
     const removedEffects = filterBySamePathAndLen(removedEffectsList, sameEffectsPaths);
 
-    blockReport.addedEffects = extractEffectItem(addedEffects);
-    blockReport.removedEffects = extractEffectItem(removedEffects);
-  }
-  if(!blockReports.includes(blockReport)){
-    blockReports.push(blockReport);
+    blockReportInfoItem.addedEffects = extractEffectItem(addedEffects);
+    blockReportInfoItem.removedEffects = extractEffectItem(removedEffects);
   }
 };
 
@@ -171,11 +181,11 @@ function detectOther(arg: {
   extra: Parameters<typeof iterateNodes>[2],
 }, index: number){
   const { topScopeNode, operation, extra: { blockReports, programNode, diff_txt } } = arg;
-  const blockReport = findOrCreateBlockReport(blockReports, "Other", index, diff_txt);
-  const { added, removed } = blockReport;
+  const blockReportInfoItem = findOrCreateBlockReport(blockReports, "Other", index, diff_txt);
+  const { added, removed } = blockReportInfoItem;
   const nodePaths = getPathsOfNode(topScopeNode._util.nodeCollection);
   (operation === 'add' ? added : removed).push(...nodePaths);
-  pushBlockReport(blockReports, blockReport, programNode, index);
+  pushBlockReport(blockReportInfoItem, programNode, index);
 }
 
 
@@ -196,7 +206,7 @@ function detectImport(arg: {
       (operation === 'add' ? addedEffects : removedEffects).push({ causeBy: local, effects: [...local._util.effectIds] });
     });
   }
-  pushBlockReport(blockReports, blockReport, programNode, index);
+  pushBlockReport(blockReport, programNode, index);
 }
 
 function detectFnClsDeclaration(arg: {
@@ -210,7 +220,7 @@ function detectFnClsDeclaration(arg: {
   const { id } = topScopeNode as unknown as { id: AstNode };
   (operation === 'add' ? added : removed).push(id.name!);
   (operation === 'add' ? addedEffects : removedEffects).push({ causeBy: id, effects: [...id._util.effectIds] });
-  pushBlockReport(blockReports, blockReport, programNode, index);
+  pushBlockReport(blockReport, programNode, index);
 }
 
 function insertPrefix(n: string, prefix: string, sep = ":"){
@@ -265,7 +275,7 @@ function detectVariableDeclaration(arg: {
     });
   }
 
-  pushBlockReport(blockReports, blockReport, programNode, index);
+  pushBlockReport(blockReport, programNode, index);
 }
 
 function detectUpdateEffectExp(arg: {
@@ -283,7 +293,7 @@ function detectUpdateEffectExp(arg: {
     (operation === 'add' ? added : removed).push(createdExpId.name!);
     (operation === 'add' ? addedEffects : removedEffects).push({ causeBy: createdExpId, effects: [...createdExpId._util.effectIds] });
   }
-  pushBlockReport(blockReports, blockReport, programNode, index);
+  pushBlockReport(blockReport, programNode, index);
 }
 
 function detectFnCallExp(arg: {
@@ -307,7 +317,7 @@ function detectFnCallExp(arg: {
     (operation === 'add' ? added: removed).push(createdExpId.name!);
     (operation === 'add' ? addedEffects : removedEffects).push({ causeBy: createdExpId, effects: [...createdExpId._util.effectIds] });
   }
-  pushBlockReport(blockReports, blockReport, programNode, index);
+  pushBlockReport(blockReport, programNode, index);
 }
 
 function detectAssignmentEffectExp(arg: {
@@ -330,5 +340,5 @@ function detectAssignmentEffectExp(arg: {
   for (const createdExp of idSetRight) {
     (operation === 'add' ? added : removed).push(insertPrefix(createdExp.name!, "right"));
   }
-  pushBlockReport(blockReports, blockReport, programNode, index);
+  pushBlockReport(blockReport, programNode, index);
 }

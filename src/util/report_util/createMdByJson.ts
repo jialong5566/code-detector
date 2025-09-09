@@ -1,4 +1,5 @@
 import {createDetectReport, DetectReport} from "../report_util";
+import {BlockReport} from "./code_block_detect";
 
 const mapReportType: Record<DetectReport["type"], string> = {
   modify: '修改',
@@ -24,18 +25,28 @@ function reportItemToMd(report: ReturnType<typeof createDetectReport>[number]){
   ].filter(Boolean).join("\n\n");
 }
 
-function blockReportToMd(block: ReturnType<typeof createDetectReport>[number]['blockReports'][number], index: number){
+function blockReportToMd(block: ReturnType<typeof createDetectReport>[number]["blockReports"][number], index: number){
   const {
-    kindList,
     diff_txt,
+    infos
+  } = block;
+  return [
+    `### 对比${index + 1}分析`,
+    `- 原始diff内容\n\`\`\`txt\n${diff_txt.join('\n')}\n\`\`\``,
+    ...infos.map(blockReportInfoItemToMd),
+  ].filter(Boolean).join("\n\n");
+}
+
+function blockReportInfoItemToMd(info: ReturnType<typeof createDetectReport>[number]["blockReports"][number]["infos"][number], index: number){
+  const {
+    kind,
     added,
     addedEffects,
     removed,
     removedEffects,
-  } = block;
+  } = info;
   return [
-    `### 对比${index + 1}分析, 节点种类${kindList.join()}`,
-    `- 原始diff内容\n\`\`\`txt\n${diff_txt.join('\n')}\n\`\`\``,
+    `#### 分类${index + 1}: ${kind}`,
     added.length > 0 ? `- 新增标识符\n> ${added.join(', ')}` : '',
     addedEffects.length > 0 ? `- 新增标识符影响\n` : '',
     addedEffects.map(({ causeBy, effects}) => `> ${causeBy}相关: ${effects.join()}`).join('\n\n'),

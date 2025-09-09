@@ -50,33 +50,39 @@ export function createDetectReport(arg: Arg){
     const allNodes = new Map([...astKit.mapUuidToNode.values()].map(ele => [AstUtil.getNodePath(ele), ele]));
     return {
       ...report,
-      blockReports: report.blockReports.filter(e => !e.kindList.includes("Never") ).map(blockReport => {
-        const { kindList, addedEffects, removedEffects, topAdded, topRemoved, ...rest } = blockReport;
-        const removedEffectsInfos = removedEffects.map(item => {
-          const tmpList = item.effects.map(ele => {
-            // todo
-            const nodePath = AstUtil.getNodePath(ele);
-            const item = allNodes.get(nodePath);
-            return item && AstUtil.createScopeContent(item);
-          }).filter(Boolean);
-          const effects= [...new Set(tmpList)];
+      blockReports: report.blockReports.map(blockReport => {
+        const { infos, diff_txt } = blockReport;
+        const infosList = infos.map(info => {
+          const { addedEffects, removedEffects, topAdded, topRemoved, ...rest } = info;
+          const removedEffectsInfos = removedEffects.map(item => {
+            const tmpList = item.effects.map(ele => {
+              // todo
+              const nodePath = AstUtil.getNodePath(ele);
+              const item = allNodes.get(nodePath);
+              return item && AstUtil.createScopeContent(item);
+            }).filter(Boolean);
+            const effects= [...new Set(tmpList)];
+            return {
+              causeBy: item.causeBy.name || item.causeBy.type,
+              effects
+            }
+          }).filter(item => item.effects.length > 0);
+          const addedEffectsInfos = addedEffects.map(item => {
+            const effects = [...new Set(item.effects.map(AstUtil.createScopeContent))];
+            return {
+              causeBy: item.causeBy.name || item.causeBy.type,
+              effects
+            }
+          }).filter(item => item.effects.length > 0);
           return {
-            causeBy: item.causeBy.name || item.causeBy.type,
-            effects
-          }
-        }).filter(item => item.effects.length > 0);
-        const addedEffectsInfos = addedEffects.map(item => {
-          const effects = [...new Set(item.effects.map(AstUtil.createScopeContent))];
-          return {
-            causeBy: item.causeBy.name || item.causeBy.type,
-            effects
-          }
-        }).filter(item => item.effects.length > 0);
+            ...rest,
+            addedEffects: addedEffectsInfos,
+            removedEffects: removedEffectsInfos,
+          };
+        });
         return {
-          kindList,
-          ...rest,
-          addedEffects: addedEffectsInfos,
-          removedEffects: removedEffectsInfos,
+          diff_txt,
+          infos: infosList,
         };
       })
     }
