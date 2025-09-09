@@ -42,14 +42,8 @@ const createBlockReport = (kind: BlockReport["kind"], index: number): BlockRepor
 });
 
 const findOrCreateBlockReport = (blockReports: BlockReport[], kind: BlockReport["kind"], index: number): BlockReport => {
-  if(blockReports.at(-1)?.index === index){
-    const res = blockReports.at(-1)!;
-    if(res.kind !== kind){
-      res.kind = `${res.kind} | ${kind}` as any;
-    }
-    return res;
-  }
-  return createBlockReport(kind, index);
+  const res = blockReports.find(item => item.index === index && item.kind === kind);
+  return res || createBlockReport(kind, index);
 }
 
 type Arg = {
