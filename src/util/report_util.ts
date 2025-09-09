@@ -50,8 +50,8 @@ export function createDetectReport(arg: Arg){
     const allNodes = new Map([...astKit.mapUuidToNode.values()].map(ele => [AstUtil.getNodePath(ele), ele]));
     return {
       ...report,
-      blockReports: report.blockReports.filter(e => e.kind !== "Never").map(blockReport => {
-        const { kind, addedEffects, removedEffects, topAdded, topRemoved, ...rest } = blockReport;
+      blockReports: report.blockReports.filter(e => !e.kindList.includes("Never") ).map(blockReport => {
+        const { kindList, addedEffects, removedEffects, topAdded, topRemoved, ...rest } = blockReport;
         const removedEffectsInfos = removedEffects.map(item => {
           const tmpList = item.effects.map(ele => {
             // todo
@@ -73,7 +73,7 @@ export function createDetectReport(arg: Arg){
           }
         }).filter(item => item.effects.length > 0);
         return {
-          kind,
+          kindList,
           ...rest,
           addedEffects: addedEffectsInfos,
           removedEffects: removedEffectsInfos,

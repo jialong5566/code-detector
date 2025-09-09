@@ -13,7 +13,7 @@ type EffectItem = {
 }
 export type BlockReport = {
   index: number,
-  kind: BlockReportKind,
+  kindList: BlockReportKind[],
   diff_txt: string[];
   topAdded: AstNode[],
   topRemoved: AstNode[],
@@ -26,9 +26,9 @@ export type BlockReport = {
   removedEffects: EffectItem[],
 };
 
-const createBlockReport = (kind: BlockReport["kind"], index: number): BlockReport => ({
+const createBlockReport = (kind: BlockReportKind, index: number): BlockReport => ({
   index,
-  kind,
+  kindList: [kind],
   diff_txt: [],
   topAdded: [],
   topRemoved: [],
@@ -41,9 +41,11 @@ const createBlockReport = (kind: BlockReport["kind"], index: number): BlockRepor
   removedEffects: [],
 });
 
-const findOrCreateBlockReport = (blockReports: BlockReport[], kind: BlockReport["kind"], index: number): BlockReport => {
-  const res = blockReports.find(item => item.index === index && item.kind === kind);
-  return res || createBlockReport(kind, index);
+const findOrCreateBlockReport = (blockReports: BlockReport[], kind: BlockReportKind, index: number, diff_txt: string[]): BlockReport => {
+  const res = blockReports.find(item => item.index === index) || createBlockReport(kind, index);
+  res.diff_txt = diff_txt;
+  res.kindList = res.kindList.includes(kind) ? res.kindList : [...res.kindList, kind];
+  return res;
 }
 
 type Arg = {
@@ -70,14 +72,8 @@ export default function codeBlockDetect(arg: Arg){
     // 获取从 startLineOfOld 到 lineNumberEndOld 的所有 删除的 顶层节点
     const removeNodes = AstUtil.getTopScopeNodesByLineNumberRange(mapFileLineToNodeSetOld, lineNumberStartOld, lineNumberEndOld);
     // todo addNodes 和 removeNodes 的类型 不一定都一样
-    iterateNodes(addNodes, "add", { blockReports, programNode }, index);
-    iterateNodes(removeNodes, "remove", { blockReports, programNode }, index);
-    const lastReport = blockReports.at(-1);
-    if(lastReport){
-      lastReport.diff_txt = items;
-      lastReport.topAdded = addNodes;
-      lastReport.topRemoved = removeNodes;
-    }
+    iterateNodes(addNodes, "add", { blockReports, programNode, diff_txt: items }, index);
+    iterateNodes(removeNodes, "remove", { blockReports, programNode, diff_txt: items }, index);
   }
   blockReports.push(createBlockReport('Never', NaN));
 };
@@ -108,7 +104,7 @@ function extractEffectItem(list: {effects: {path: string, ele: AstNode}[], cause
 }
 
 function pushBlockReport(blockReports: BlockReport[], blockReport: BlockReport, programNode: AstNode, index: number){
-  if(blockReport.kind.startsWith("Other:")){
+  if(blockReport.kindList.includes("Other")){
     (['added', 'removed'] as const).forEach(key => {
       const tailElements = blockReport[key].map(ele => ele.split(":").at(-1)!).filter(Boolean);
       blockReport[key] = [...new Set(tailElements)];
@@ -137,7 +133,7 @@ function pushBlockReport(blockReports: BlockReport[], blockReport: BlockReport, 
   }
 };
 
-function iterateNodes(topScopeNodes: AstNode[], operation: "add"|"remove", extra: { blockReports: BlockReport[], programNode: AstNode }, index: number){
+function iterateNodes(topScopeNodes: AstNode[], operation: "add"|"remove", extra: { blockReports: BlockReport[], programNode: AstNode, diff_txt: string[] }, index: number){
   for (const topScopeNode of topScopeNodes) {
     // 导入声明处理
     if(["ImportDeclaration", "ImportSpecifier", "ImportDefaultSpecifier"].includes(topScopeNode.type)){
@@ -174,12 +170,11 @@ function detectOther(arg: {
   operation: "add"|"remove",
   extra: Parameters<typeof iterateNodes>[2],
 }, index: number){
-  const { topScopeNode, operation, extra: { blockReports, programNode } } = arg;
-  const blockReport = findOrCreateBlockReport(blockReports, "Other", index);
+  const { topScopeNode, operation, extra: { blockReports, programNode, diff_txt } } = arg;
+  const blockReport = findOrCreateBlockReport(blockReports, "Other", index, diff_txt);
   const { added, removed } = blockReport;
   const nodePaths = getPathsOfNode(topScopeNode._util.nodeCollection);
   (operation === 'add' ? added : removed).push(...nodePaths);
-  blockReport.kind = ("Other:" + topScopeNode.type) as BlockReport['kind'];
   pushBlockReport(blockReports, blockReport, programNode, index);
 }
 
@@ -190,8 +185,8 @@ function detectImport(arg: {
   operation: "add"|"remove",
   extra: Parameters<typeof iterateNodes>[2],
 },index: number){
-  const { topScopeNode, operation, extra: { blockReports, programNode } } = arg;
-  const blockReport = findOrCreateBlockReport(blockReports, "Import", index);
+  const { topScopeNode, operation, extra: { blockReports, programNode, diff_txt } } = arg;
+  const blockReport = findOrCreateBlockReport(blockReports, "Import", index, diff_txt);
   const { added, removed, addedEffects, removedEffects } = blockReport;
   const specifiers = topScopeNode.type === "ImportDeclaration" ? (topScopeNode as unknown as { specifiers: AstNode[] }).specifiers : [topScopeNode as AstNode & { local: AstNode }];
   if(Array.isArray(specifiers)){
@@ -209,8 +204,8 @@ function detectFnClsDeclaration(arg: {
   operation: "add"|"remove",
   extra: Parameters<typeof iterateNodes>[2],
 }, index: number){
-  const { topScopeNode, operation, extra: { blockReports, programNode } } = arg;
-  const blockReport = findOrCreateBlockReport(blockReports, "Declaration", index);
+  const { topScopeNode, operation, extra: { blockReports, programNode, diff_txt } } = arg;
+  const blockReport = findOrCreateBlockReport(blockReports, "Declaration", index, diff_txt);
   const { added, removed, addedEffects, removedEffects } = blockReport;
   const { id } = topScopeNode as unknown as { id: AstNode };
   (operation === 'add' ? added : removed).push(id.name!);
@@ -227,8 +222,8 @@ function detectVariableDeclaration(arg: {
   operation: "add"|"remove",
   extra: Parameters<typeof iterateNodes>[2],
 }, index: number){
-  const { topScopeNode, operation, extra: { blockReports, programNode } } = arg;
-  const blockReport = findOrCreateBlockReport(blockReports, "Declaration", index);
+  const { topScopeNode, operation, extra: { blockReports, programNode, diff_txt } } = arg;
+  const blockReport = findOrCreateBlockReport(blockReports, "Declaration", index, diff_txt);
 
   const { added, removed, addedEffects, removedEffects } = blockReport;
   if(["VariableDeclaration", "VariableDeclarator"].includes(topScopeNode.type)){
@@ -278,8 +273,8 @@ function detectUpdateEffectExp(arg: {
   operation: "add"|"remove",
   extra: Parameters<typeof iterateNodes>[2],
 }, index: number){
-  const { topScopeNode, operation, extra: { blockReports, programNode } } = arg;
-  const blockReport = findOrCreateBlockReport(blockReports, "SelfUpdate", index);
+  const { topScopeNode, operation, extra: { blockReports, programNode, diff_txt } } = arg;
+  const blockReport = findOrCreateBlockReport(blockReports, "SelfUpdate", index, diff_txt);
   const { added, removed, addedEffects, removedEffects } = blockReport;
   const { argument: args } = topScopeNode as unknown as { argument: AstNode };
   const createdExpIdSet = new Set<AstNode>();
@@ -296,8 +291,8 @@ function detectFnCallExp(arg: {
   operation: "add"|"remove",
   extra: Parameters<typeof iterateNodes>[2],
 }, index: number) {
-  const { topScopeNode, operation, extra: { blockReports, programNode } } = arg;
-  const blockReport = findOrCreateBlockReport(blockReports, "Invoke", index);
+  const { topScopeNode, operation, extra: { blockReports, programNode, diff_txt } } = arg;
+  const blockReport = findOrCreateBlockReport(blockReports, "Invoke", index, diff_txt);
   const { added, removed, addedEffects, removedEffects } = blockReport;
   const { callee, arguments: args } = topScopeNode as unknown as { callee: AstNode, arguments: AstNode[] };
   const argsIds = args.map(arg => arg._util.nodeCollection.filter(n => n.type === "Identifier")).flat();
@@ -320,8 +315,8 @@ function detectAssignmentEffectExp(arg: {
   operation: "add"|"remove",
   extra: Parameters<typeof iterateNodes>[2],
 }, index: number) {
-  const {topScopeNode, operation, extra: { blockReports, programNode }} = arg;
-  const blockReport = findOrCreateBlockReport(blockReports, "Assignment", index);
+  const {topScopeNode, operation, extra: { blockReports, programNode, diff_txt }} = arg;
+  const blockReport = findOrCreateBlockReport(blockReports, "Assignment", index, diff_txt);
   const {added, removed, addedEffects, removedEffects} = blockReport;
   const {left, right} = topScopeNode as unknown as { left: AstNode, right: AstNode };
   const idSetLeft = new Set<AstNode>();

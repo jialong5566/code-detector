@@ -26,7 +26,7 @@ function reportItemToMd(report: ReturnType<typeof createDetectReport>[number]){
 
 function blockReportToMd(block: ReturnType<typeof createDetectReport>[number]['blockReports'][number], index: number){
   const {
-    kind,
+    kindList,
     diff_txt,
     added,
     addedEffects,
@@ -34,9 +34,8 @@ function blockReportToMd(block: ReturnType<typeof createDetectReport>[number]['b
     removedEffects,
   } = block;
   return [
-    `### 对比${index + 1}分析`,
+    `### 对比${index + 1}分析, 节点种类${kindList.join()}`,
     `- 原始diff内容\n\`\`\`txt\n${diff_txt.join('\n')}\n\`\`\``,
-    `#### 修改分类: ${kind}`,
     added.length > 0 ? `- 新增标识符\n> ${added.join(', ')}` : '',
     addedEffects.length > 0 ? `- 新增标识符影响\n` : '',
     addedEffects.map(({ causeBy, effects}) => `> ${causeBy}相关: ${effects.join()}`).join('\n\n'),
