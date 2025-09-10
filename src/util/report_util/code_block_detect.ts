@@ -119,7 +119,7 @@ function extractEffectItem(list: {effects: {path: string, ele: AstNode}[], cause
 function pushBlockReport(blockReportInfoItem: BlockReportInfoItem, programNode: AstNode, index: number){
   if(blockReportInfoItem.kind === "Other"){
     (['added', 'removed'] as const).forEach(key => {
-      const tailElements = blockReportInfoItem[key].map(ele => ele.split(":").at(-1)!).filter(Boolean);
+      const tailElements = blockReportInfoItem[key].map(ele => ele.split(":").at(-1)!).filter(e => e && e !== "undefined");
       blockReportInfoItem[key] = [...new Set(tailElements)];
     });
   }
