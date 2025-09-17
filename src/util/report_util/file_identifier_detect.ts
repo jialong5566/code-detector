@@ -3,6 +3,7 @@ import AstUtil from "../ast_util/AstUtil";
 
 export function fileIdentifierDetect(filePath: string, absPathPrefix: string){
   const { mapUuidToNode } = getAstKitByFilePath(filePath, absPathPrefix);
+  /** 找出根节点 */
   const programNode = mapUuidToNode.get("Program");
   if(!programNode){
     return [];

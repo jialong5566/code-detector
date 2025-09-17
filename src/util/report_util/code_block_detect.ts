@@ -5,6 +5,7 @@ import {join} from "path";
 import getAstKitByFilePath from "../ast_util/getAstKitByFilePath";
 import AstUtil, {AstNode} from "../ast_util/AstUtil";
 import {GitDiffDetail} from "../format_git_diff_content";
+import {SOURCE} from "../constants";
 
 type BlockReportKind = "Import"|"Declaration"|"Assignment"|"SelfUpdate"|"Invoke"|"Other";
 type EffectItem = {
@@ -72,7 +73,7 @@ export default function codeBlockDetect(arg: Arg){
   const { gitDiffItem, absPathPrefix, blockReports, index } = arg;
   const { filePath, startLineOfNew, items, startLineOfOld } = gitDiffItem;
   const { mapFileLineToNodeSet, mapUuidToNode } = getAstKitByFilePath(filePath, absPathPrefix);
-  const filePathOfOld = join(process.cwd(), '..', 'source', filePath);
+  const filePathOfOld = join(process.cwd(), '..', SOURCE, filePath);
   const { mapFileLineToNodeSet: mapFileLineToNodeSetOld } = getAstKitByFilePath(filePathOfOld, absPathPrefix);
   // 当前文件的 根AST
   const programNode = mapUuidToNode.get("Program");
@@ -336,6 +337,7 @@ function detectAssignmentEffectExp(arg: {
     (operation === 'add' ? addedEffects : removedEffects).push({ causeBy: createdExp, effects: [...createdExp._util.effectIds] });
   }
   const idSetRight = new Set<AstNode>();
+  // todo 多余
   ["Identifier", "ArrowFunctionExpression", "FunctionExpression"].includes(right.type) ? idSetRight.add(right) : AstUtil.deepFindIdOfExpression(right, id => idSetRight.add(id));
   for (const createdExp of idSetRight) {
     (operation === 'add' ? added : removed).push(insertPrefix(createdExp.name!, "right"));

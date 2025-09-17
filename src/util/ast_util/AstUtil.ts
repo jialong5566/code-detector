@@ -1,6 +1,7 @@
 import { windowProperties } from "./windowProperties";
 import { intrinsicElements, standardAttributes } from "./intrinsicElements";
 export interface AstNode {
+  computed?: boolean;
   type: string;
   name?: string;
   start?: number | null;
@@ -25,6 +26,7 @@ export interface AstNode {
     dependenceIds: Set<AstNode>,
     holdingIds: Set<AstNode>,
     holdingIdNameMap: Map<string, Set<AstNode>>,
+    holdingIdType: 'Import'|'Variable'|'Function'|'Class'|'Param'|null,
     inject: Set<AstNode>,
     provide: Set<AstNode>,
     effectIds: Set<AstNode>,
@@ -49,7 +51,7 @@ export default class AstUtil {
     }
     return this._deepFirstTravel(node, visitedNodeSet, {filePath, depth:0, mapUuidToNode, mapFileLineToNodeSet})
   }
-  static _deepFirstTravel(node: AstNode, visitedNodeSet: Set<typeof node>, extra: { filePath: string, depth: number, mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>> }){
+  private static _deepFirstTravel(node: AstNode, visitedNodeSet: Set<typeof node>, extra: { filePath: string, depth: number, mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>> }){
     visitedNodeSet.add(node);
     const { filePath, depth, mapUuidToNode, mapFileLineToNodeSet } = extra;
     const _util: AstNode['_util'] = {
@@ -67,6 +69,7 @@ export default class AstUtil {
       uuid: "",
       variableScope: [],
       dependenceIds: new Set<AstNode>(),
+      holdingIdType: null,
       holdingIds: new Set<AstNode>(),
       holdingIdNameMap: new Map<string, Set<AstNode>>(),
       inject: new Set<AstNode>(),
@@ -107,18 +110,21 @@ export default class AstUtil {
     children.forEach(child => child._util.parent = node);
     nodeCollection.forEach(nodeItem => nodeItem._util.ancestors.unshift(node));
     this.collectHoldingIds(node as AstNode & { body: AstNode|null});
-    this.collectInjectProvide(node as AstNode & { body: AstNode|null});
+    /** 所有 所持有的 标识符收集完成后，开始收集依赖的标识符 */
+    this.collectDependenceIds(node);
+    this.collectInjectAndProvide(node as AstNode & { body: AstNode|null});
     this.collectEffectId(node);
     this.updateLoc(node, { mapUuidToNode, mapFileLineToNodeSet });
     return node;
   }
 
-  static collectInjectProvide(ast: AstNode){
+  private static collectInjectAndProvide(ast: AstNode){
     const { type, _util: { inject, provide, holdingIds }} = ast;
     if(type !== "Program" || !this.isBodyArray(ast)){
       return;
     }
     ast.body.forEach(node => {
+      // 搜集 注入的 标识符
       node.type === "ImportDeclaration" && this.findIdOfImport(node, id => inject.add(id));
       if(node.type === "ExportAllDeclaration"){
         const { exported } = node as unknown as { exported: AstNode };
@@ -133,7 +139,7 @@ export default class AstUtil {
           theOne && provide.add(theOne);
         }
         else {
-          this.deepFindIdOfExpression(declaration, id => provide.add(id));
+          provide.add(declaration);
         }
       }
       if(node.type === "ExportNamedDeclaration") {
@@ -151,31 +157,65 @@ export default class AstUtil {
     });
   }
 
-  static collectHoldingIds(node: AstNode & { body: AstNode|null}){
+  private static collectHoldingIds(node: AstNode & { body: AstNode|null}){
     const { holdingIds, holdingIdNameMap } = node._util;
+    // 主要针对 Program 节点，函数体内的 变量 或 函数 或 class
     if(this.isBodyArray(node)){
       const { body } = node;
       body.forEach((cur) => {
         if(cur.type === "ImportDeclaration"){
-          this.findIdOfImport(cur, id => holdingIds.add(id));
+          this.findIdOfImport(cur, id => {
+            holdingIds.add(id);
+            id._util.variableScope = [id];
+            id._util.holdingIdType = "Import";
+          });
         }
         else if(cur.type === "FunctionDeclaration" || cur.type === "ClassDeclaration"){
           const id = (cur as unknown as { id: AstNode|null }).id;
-          id && holdingIds.add(id);
+          if(id){
+            holdingIds.add(id);
+            id._util.variableScope = [id];
+            id._util.holdingIdType = cur.type === "ClassDeclaration" ? "Class" : "Function";
+          }
         }
         else if(cur.type === "VariableDeclaration"){
-          this.findIdOfVariable(cur, id => holdingIds.add(id));
+          this.findIdOfVariable(cur, id => {
+            holdingIds.add(id);
+            id._util.variableScope = [id];
+            id._util.holdingIdType = "Variable";
+          });
         }
       });
     }
+    // 主要针对 FunctionDeclaration 节点， 块作用域 BlockStatement 节点，函数体内的 变量 或 函数 或 class
     if(node.body && this.isBodyArray(node.body)){
       const { body } = node.body;
       body.forEach((cur) => {
-        this.findIdOfFunctionOrVariableOrClass(cur, id => holdingIds.add(id));
+        if(node.type === "FunctionDeclaration" || node.type === "ClassDeclaration"){
+          const id = (node as unknown as { id: AstNode|null }).id;
+          if(id){
+            holdingIds.add(id);
+            id._util.variableScope = [id];
+            id._util.holdingIdType = node.type === "ClassDeclaration" ? "Class" : "Function";
+          }
+        }
+        else if(node.type === "VariableDeclaration"){
+          this.findIdOfVariable(node, id => {
+            holdingIds.add(id);
+            id._util.variableScope = [id];
+            id._util.holdingIdType = "Variable";
+          });
+        }
       });
     }
+    // 收集函数参数的变量名
     if(["FunctionDeclaration", "ArrowFunctionExpression", "FunctionExpression"].includes(node.type)){
-      (node as unknown as { params: AstNode[] }).params.forEach(param => this._deepFindIdentifier(param, id => holdingIds.add(id)));
+      const params = (node as unknown as { params: AstNode[] }).params;
+      params.forEach(param => this._deepFindIdentifier(param, id => {
+        holdingIds.add(id || node);
+        id._util.variableScope = [id || node];
+        id._util.holdingIdType = "Param";
+      }))
     }
     holdingIds.forEach(holdingId => {
       const holdingIdName = holdingId.name!;
@@ -183,10 +223,9 @@ export default class AstUtil {
       nodeSetOfIdName.add(holdingId);
       holdingIdNameMap.set(holdingIdName, nodeSetOfIdName);
     });
-    this.collectDependenceIds(node);
   }
 
-  static isVarInit(node: AstNode){
+  private static isVarInit(node: AstNode){
     return node._util.parentProperty === 'init' && node._util.parent?.type === 'VariableDeclarator'
   }
 
@@ -194,14 +233,15 @@ export default class AstUtil {
     return node._util.parentProperty === 'argument' && node._util.parent?.type === 'ReturnStatement';
   }
 
-  static collectDependenceIds(node: AstNode){
+  private static collectDependenceIds(node: AstNode){
+    // todo 这里需要重构，因为这里的逻辑太复杂了。
     const { nodeCollection, dependenceIds, holdingIdNameMap } = node._util;
     nodeCollection.forEach(e => {
-      this.deepFindIdOfExpression(e, id => dependenceIds.add(id));
       this.findExportIdentifiers(e, id => dependenceIds.add(id));
-      if(e.type === "Identifier" && (this.isVarInit(e) || this.isReturnArgument(e))){
-        dependenceIds.add(e);
-      }
+      this.collectExpressionIdentifiers(e, id => dependenceIds.add(id));
+      // if(e.type === "Identifier" && e._util.holdingIdType === null){
+      //   dependenceIds.add(e);
+      // }
     });
     for (const dependenceId of dependenceIds) {
       if(dependenceId._util.variableScope.length === 0){
@@ -216,7 +256,7 @@ export default class AstUtil {
     }
   }
 
-  static markDependenceIdCrossScope(node: AstNode, scopeId: AstNode){
+  private static markDependenceIdCrossScope(node: AstNode, scopeId: AstNode){
     const isParamsElement = scopeId._util.parentProperty === "params";
     const isCalleeId = node._util.parent?.type === "CallExpression" && node._util.parentProperty === "callee"
     if(isParamsElement && isCalleeId){
@@ -227,19 +267,22 @@ export default class AstUtil {
       const isFnInAssign = fn._util.parentProperty === "right" && fn._util.parent?.type === "AssignmentExpression";
       if(isFn && isFnInVarDec ){
         const idHolderOfFn = (fn._util.parent as unknown as { id: AstNode }).id;
+        idHolderOfFn._util.effectIds.add(node);
         node._util.crossScope.add(idHolderOfFn);
       }
       else if(isFn && isFnInAssign){
         const idHolderOfFn = (fn._util.parent as unknown as { left: AstNode }).left;
+        idHolderOfFn._util.effectIds.add(node);
         node._util.crossScope.add(idHolderOfFn);
       }
       else if(fn.type === "FunctionDeclaration"){
+        fn._util.effectIds.add(node);
         node._util.crossScope.add(fn);
       }
     }
   }
 
-  static isUseStateVarDec(node: AstNode): node is (AstNode & { type: "VariableDeclarator", id: { type: "ArrayPattern", elements: (null|AstNode)[]}, init: { type: "CallExpression", callee: AstNode, arguments: [AstNode]|[]} }) {
+  private static isUseStateVarDec(node: AstNode): node is (AstNode & { type: "VariableDeclarator", id: { type: "ArrayPattern", elements: (null|AstNode)[]}, init: { type: "CallExpression", callee: AstNode, arguments: [AstNode]|[]} }) {
      if(node.type !== "VariableDeclarator") return false;
      const { id, init } = (node as unknown as { init: AstNode, id: AstNode });
      if(init.type !== "CallExpression" || id.type !== "ArrayPattern") return false;
@@ -254,7 +297,7 @@ export default class AstUtil {
       const { callee } = init as unknown as { callee: AstNode };
       return (callee.type === "Identifier") && (callee.name === "useMemo");
   }
-  static isUseCallbackVarDec(node: AstNode){
+  private static isUseCallbackVarDec(node: AstNode){
       if(node.type !== "VariableDeclarator") return false;
       const { id, init } = (node as unknown as { init: AstNode, id: AstNode });
       if(init.type !== "CallExpression") return false;
@@ -263,12 +306,16 @@ export default class AstUtil {
   }
 
   // todo 不断完善
-  static collectEffectId(node: AstNode){
+  private static collectEffectId(node: AstNode){
     if(node.type === "VariableDeclarator"){
       this.collectEffectIdOfVarDec(node);
     }
     if(node.type === "AssignmentExpression"){
       this.collectEffectIdOfAssign(node);
+      return;
+    }
+    if(node.type === "CallExpression"){
+      this.collectEffectIdOfFnCall(node);
       return;
     }
     const isDeleteOperator = "UnaryExpression" === node.type && (node as any).operator === "delete";
@@ -277,7 +324,31 @@ export default class AstUtil {
     }
   }
 
-  static collectEffectIdOfVarDec(node: AstNode){
+  private static collectEffectIdOfFnCall(node: AstNode){
+    if(node.type !== "CallExpression"){
+      return;
+    }
+    const { callee } = node as unknown as { callee: AstNode };
+    const scopeId = callee.type === "MemberExpression" ? this.getRootIdentifierOfMemberExpression(callee)._util.variableScope[0] : callee._util.variableScope[0];
+    if(!scopeId) return;
+    const isParamsElement = scopeId._util.parentProperty === "params";
+    if(isParamsElement){
+      const fnNode = scopeId._util.parent!;
+      const isFn = fnNode.type === "FunctionExpression" || fnNode.type === "ArrowFunctionExpression";
+      const isFnInVarDec = fnNode._util.parentProperty === "init" && fnNode._util.parent?.type === "VariableDeclarator";
+      const isFnInAssign = fnNode._util.parentProperty === "right" && fnNode._util.parent?.type === "AssignmentExpression";
+      const isFnInClassMethod = fnNode._util.parentProperty === "value" && fnNode._util.parent?.type === "MethodDefinition";
+      if(isFn && (isFnInVarDec || isFnInAssign || isFnInClassMethod)){
+        const idHolderOfFn = (fnNode as unknown as { id?: AstNode }).id;
+        idHolderOfFn ? idHolderOfFn._util.effectIds.add(node) : fnNode._util.effectIds.add(node);
+      }
+      else if(fnNode.type === "FunctionDeclaration"){
+        fnNode._util.effectIds.add(node);
+      }
+    }
+  }
+
+  private static collectEffectIdOfVarDec(node: AstNode){
     // 收集等号后边的 表达式涉及的 id 集合
     // 重点关注 useState 生成的变量
     const { id, init } = (node as unknown as { init: AstNode, id: AstNode });
@@ -299,14 +370,14 @@ export default class AstUtil {
     const idSet = new Set<AstNode>();
     this._deepFindIdentifier(id, ele => idSet.add(ele));
     const createdExpIdSet = new Set<AstNode>();
-    ["Identifier", "ArrowFunctionExpression", "FunctionExpression"].includes(init.type) ? createdExpIdSet.add(init) : this.deepFindIdOfExpression(init, id => createdExpIdSet.add(id));
+    ["Identifier", "ArrowFunctionExpression", "FunctionExpression"].includes(init.type) ? createdExpIdSet.add(init) : this.collectExpressionIdentifiers(init, id => createdExpIdSet.add(id));
     // 创建的 每个变量的 effectIds 集合为 createdExpIdSet
     for (const createdId of idSet) {
       createdId._util.effectIds = new Set([...createdExpIdSet, ...createdId._util.effectIds]);
     }
   }
 
-  static collectEffectIdOfUseState(node: AstNode){
+  private static collectEffectIdOfUseState(node: AstNode){
     const { id, init } = (node as unknown as { init: { arguments: AstNode[] }, id: { elements: (null|AstNode)[] } });
     const args = init.arguments;
     const argsIdSet = new Set<AstNode>();
@@ -319,7 +390,7 @@ export default class AstUtil {
       this._deepFindIdentifier(stateNode, ele => stateIdSet.add(ele));
       const setStateIdSet = new Set<AstNode>();
       if(setStateNode){
-        this._deepFindIdentifier(setStateNode, ele => setStateIdSet.add(ele));
+        setStateIdSet.add(setStateNode);
       }
       for (const stateId of stateIdSet) {
         stateId._util.effectIds = new Set([...argsIdSet, ...setStateIdSet]);
@@ -327,7 +398,7 @@ export default class AstUtil {
     }
   }
 
-  static collectEffectIdOfUseMemo(node: AstNode){
+  private static collectEffectIdOfUseMemo(node: AstNode){
     const { id, init } = (node as unknown as { init: { arguments: AstNode[] }, id: AstNode });
     const args = init.arguments;
     const depsIdSet = new Set<AstNode>();
@@ -338,7 +409,7 @@ export default class AstUtil {
       memoId._util.effectIds = new Set([...depsIdSet, ...memoId._util.effectIds]);
     }
   }
-  static collectEffectIdOfUseCallback(node: AstNode) {
+  private static collectEffectIdOfUseCallback(node: AstNode) {
     const { id, init } = (node as unknown as { init: { arguments: AstNode[] }, id: AstNode });
     const args = init.arguments;
     const depsIdSet = new Set<AstNode>();
@@ -348,10 +419,10 @@ export default class AstUtil {
     }
   }
 
-  static collectEffectIdOfAssign(node: AstNode){
+  private static collectEffectIdOfAssign(node: AstNode){
     const { left, right } = node as unknown as { left: AstNode, right: AstNode };
     const idSetOfRight = new Set<AstNode>();
-    this.deepFindIdOfExpression(right, id => idSetOfRight.add(id));
+    this.collectExpressionIdentifiers(right, id => idSetOfRight.add(id));
     // todo 右边的 影响 左边的
     if(left.type === "Identifier"){
       const { left } = node as unknown as { left: AstNode };
@@ -360,25 +431,25 @@ export default class AstUtil {
     else {
       const { left } = node as unknown as { left: AstNode };
       const idSetOfLeft = new Set<AstNode>();
-      this.deepFindIdOfExpression(left, id => idSetOfLeft.add(id));
+      this.collectExpressionIdentifiers(left, id => idSetOfLeft.add(id));
       for (const id of idSetOfLeft) {
         id._util.effectIds = new Set([...idSetOfRight, ...id._util.effectIds]);
       }
     };
   }
 
-  static collectEffectIdOfUnaryUpdate(node: AstNode){
+  private static collectEffectIdOfUnaryUpdate(node: AstNode){
     const { argument } = node as unknown as { argument: AstNode };
     const idSetOfArgument = new Set<AstNode>();
-    this.deepFindIdOfExpression(argument, id => idSetOfArgument.add(id));
+    this.collectExpressionIdentifiers(argument, id => idSetOfArgument.add(id));
     argument._util.effectIds = new Set([...argument._util.effectIds, ...idSetOfArgument]);
   }
 
-  static isBodyArray(node: AstNode): node is ({ body: AstNode[] } & AstNode) {
+  private static isBodyArray(node: AstNode): node is ({ body: AstNode[] } & AstNode) {
     return ["BlockStatement", "Program"].includes(node.type) && Array.isArray((node as unknown as { body: AstNode[] }).body);
   }
 
-  static findExportIdentifiers(node: any, callback: (identifier: AstNode) => void){
+  private static findExportIdentifiers(node: any, callback: (identifier: AstNode) => void){
     if(!node){
       return;
     }
@@ -396,8 +467,39 @@ export default class AstUtil {
     }
   }
 
-  static expressionTypeIsIdentifier(exp: AstNode|null): exp is AstNode & { type: "Identifier" } {
+  private static expressionTypeIsIdentifier(exp: AstNode|null): exp is AstNode & { type: "Identifier" } {
     return exp?.type === "Identifier";
+  }
+
+  static collectExpressionIdentifiers(exp: AstNode|null, callback: (identifier: AstNode) => void){
+    if(!exp || exp.type === "ThisExpression"){
+      return;
+    }
+    this._collectExpressionIdentifiers(exp, callback);
+  }
+  private static _collectExpressionIdentifiers(exp: AstNode, callback: (identifier: AstNode) => void){
+    if(!exp || exp.type === "ThisExpression"){
+      return;
+    }
+    if(exp._util.holdingIdType !== null){
+      return;
+    }
+    if(exp.type === "Identifier"){
+      if(exp._util.parentProperty === "property" || exp._util.parentProperty === "key"){
+        if(exp._util.parent!.computed){
+          callback(exp);
+        }
+      }
+      else if(!exp._util.parent?.type?.startsWith("TS")) {
+        callback(exp);
+      }
+      return;
+    }
+    if(exp.type === "JSXIdentifier" && exp._util.parent?.type !== "JSXAttribute"){
+      callback(exp);
+      return;
+    }
+    exp._util.nodeCollection.forEach(ele => this._collectExpressionIdentifiers(ele, callback));
   }
 
   static deepFindIdOfExpression(exp: AstNode|null, callback: (identifier: AstNode) => void) {
@@ -407,11 +509,23 @@ export default class AstUtil {
     this._deepFindIdOfExpression(exp, callback);
   }
 
-  static _deepFindIdOfExpression(exp: AstNode|null, callback: (identifier: AstNode) => void){
+  private static _deepFindIdOfExpression(exp: AstNode|null, callback: (identifier: AstNode) => void){
     if(!exp || exp.type === "ThisExpression"){
       return;
     }
-    if(exp.type === "SpreadElement"){
+
+    if(exp.type === "IfStatement"){
+      const { test, alternate, consequent } = exp as unknown as { test: AstNode, consequent: AstNode, alternate: AstNode };
+      test.type === 'Identifier' ? callback(test) : this._deepFindIdOfExpression(test, callback);
+      this._deepFindIdOfExpression(consequent, callback);
+      this._deepFindIdOfExpression(alternate, callback);
+    }
+    else if(exp.type === "TryStatement"){
+      const { block, finalizer } = exp as unknown as { block: AstNode, finalizer: AstNode };
+      this._deepFindIdOfExpression(block, callback);
+      finalizer && this._deepFindIdOfExpression(finalizer, callback);
+    }
+    else if(exp.type === "SpreadElement"){
       const { argument } = (exp as unknown as { argument: AstNode });
       this.expressionTypeIsIdentifier(argument) && callback(argument);
     }
@@ -476,7 +590,7 @@ export default class AstUtil {
       const { expression } = exp as unknown as { expression: AstNode};
       expression.name && callback(expression);
     }
-    else if(exp.type === "JSXIdentifier"){
+    else if(exp.type === "JSXIdentifier" && exp._util.parent?.type !== "JSXAttribute"){
       callback(exp);
     }
     else if(exp.type === "JSXAttribute"){
@@ -496,14 +610,14 @@ export default class AstUtil {
     }
   }
 
-  static getRootIdentifierOfMemberExpression(memExp: AstNode): AstNode{
+  private static getRootIdentifierOfMemberExpression(memExp: AstNode): AstNode{
     if(memExp.type === "MemberExpression" || memExp.type === "JSXMemberExpression"){
       return this.getRootIdentifierOfMemberExpression((memExp as unknown as { object: AstNode}).object);
     }
     return memExp;
   }
 
-  static findIdOfImport(node: AstNode, callback: (identifier: AstNode) => void){
+  private static findIdOfImport(node: AstNode, callback: (identifier: AstNode) => void){
     const specifiers = (node as unknown as { specifiers: AstNode[]}).specifiers;
     for (const specifier of specifiers) {
       const local = (specifier as unknown as { local: AstNode}).local;
@@ -511,16 +625,7 @@ export default class AstUtil {
     }
   }
 
-  static findIdOfFunctionOrVariableOrClass(node: AstNode, callback: (identifier: AstNode) => void){
-    if(node.type === "FunctionDeclaration" || node.type === "ClassDeclaration"){
-      const id = (node as unknown as { id: AstNode|null }).id;
-      id && callback(id);
-    }
-    else if(node.type === "VariableDeclaration"){
-      this.findIdOfVariable(node, callback);
-    }
-  }
-  static findIdOfVariable(node: AstNode, callback: (identifier: AstNode) => void){
+  private static findIdOfVariable(node: AstNode, callback: (identifier: AstNode) => void){
     if(node.type !== "VariableDeclaration"){
       return;
     }
@@ -559,7 +664,7 @@ export default class AstUtil {
     }
   }
 
-  static updateLoc(astNode: AstNode, extra: { mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>> }) {
+  private static updateLoc(astNode: AstNode, extra: { mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>> }) {
     const { _util, type, name } = astNode;
     const { mapUuidToNode, mapFileLineToNodeSet } = extra;
     const { nodeCollection, filePath } = _util;
@@ -579,11 +684,11 @@ export default class AstUtil {
     }
   }
 
-  static isValidArrayNodeCollect(astNode: any): astNode is AstNode[] {
+  private static isValidArrayNodeCollect(astNode: any): astNode is AstNode[] {
     return Array.isArray(astNode) && astNode.some(v => typeof v?.type === 'string')
   }
 
-  static isValidNodeCollect(astNode: AstNode): astNode is AstNode {
+  private static isValidNodeCollect(astNode: AstNode): astNode is AstNode {
     return typeof astNode?.type === 'string';
   }
 
