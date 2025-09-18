@@ -6,10 +6,11 @@ const mapFilePathToTools = new Map<string, ReturnType<typeof createMapFileLineTo
 const createMapFileLineToNodeSet = (file: string, absPathPrefix: string) => {
   const ast = FileUtil.getASTByFilePath(file);
   const mapUuidToNode = new Map<string, AstNode>();
+  const mapPathToNodeSet = new Map<string, Set<AstNode>>();
   const mapFileLineToNodeSet = new Map<number, Set<AstNode>>();
   const filePathRelative = file.replace(absPathPrefix, "");
-  AstUtil.deepFirstTravel(ast as any, filePathRelative, mapUuidToNode, mapFileLineToNodeSet);
-  return {mapFileLineToNodeSet, mapUuidToNode};
+  AstUtil.deepFirstTravel(ast as any, filePathRelative, mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet);
+  return {mapFileLineToNodeSet, mapUuidToNode, mapPathToNodeSet};
 };
 
 export default function getAstKitByFilePath(filePath: string, absPathPrefix: string){

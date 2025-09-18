@@ -9,12 +9,19 @@ import dayjs from "dayjs";
 import {createMdByJson} from "./util/report_util/createMdByJson";
 import {readSrcFiles} from "./util/shared/readDirFiles";
 import Core from "./util/ast_util/Core";
+import {SOURCE} from "./util/constants";
+import to from "await-to-js";
 
 const jsonName = "git_diff_report.md";
+const gitDiffFileName = "git_diff.txt";
+const gitDiffJsonName = "git_diff.json";
+const eslintJsonName = "eslint-report.json";
+const eslintFinalJsonName = "eslint-final-report.json";
 
 export async function umiPluginCallback(api: any){
-  const diff_txt = readFileSync(join(api.cwd, "git_diff.txt"), "utf-8");
+  const diff_txt = readFileSync(join(api.cwd, gitDiffFileName), "utf-8");
   const gitDiffDetail = formatGitDiffContent(diff_txt);
+  writeFileSync(join(api.cwd, gitDiffJsonName), JSON.stringify(gitDiffDetail, null, 2), { encoding: 'utf-8', flag: 'w' });
   const madgeUtil = await madge_util(api);
   if(!madgeUtil){
     return;
@@ -99,19 +106,19 @@ export async function gitDiffDetect() {
   logger.ready("准备clone源代码到临时目录下的target文件夹")
   await execa.execa(`git clone ${gitUrl} ${today}/target`, {shell: '/bin/bash'});
   logger.info("源代码clone完成");
-  logger.ready("准备clone源代码到临时目录下的source文件夹")
-  await execa.execa(`git clone ${gitUrl} ${today}/source`, {shell: '/bin/bash'});
+  logger.ready(`准备clone源代码到临时目录下的 ${SOURCE} 文件夹`)
+  await execa.execa(`git clone ${gitUrl} ${today}/${SOURCE}`, {shell: '/bin/bash'});
   logger.info("源代码clone完成");
   logger.ready("准备切换到目标分支")
   await execa.execa(`cd ${today}/target && git fetch origin ${branchName}:${branchName} && git checkout ${branchName}`, {shell: '/bin/bash'});
   logger.info("分支切换完成");
   logger.ready("准备生成git_diff.txt文件")
-  await execa.execa(`cd ${today}/target && git diff master..${branchName} --unified=0 --output=git_diff.txt`, {shell: '/bin/bash'});
+  await execa.execa(`cd ${today}/target && git diff master..${branchName} --unified=0 --output=${gitDiffFileName}`, {shell: '/bin/bash'});
   logger.info("git_diff.txt文件生成完成");
   logger.ready("准备生成插件文件");
   writeFileSync(join(process.cwd(), today, 'target', 'plugin.ts'), pluginFileContent, { encoding: 'utf-8', flag: 'w' });
   logger.info("插件文件生成完成");
-  logger.ready("准备生成报告");
+  logger.wait("准备生成报告");
   await execa.execa(`cd ${today}/target && yarn install && npm run build`,  {shell: '/bin/bash'});
   logger.info("报告生成完成！");
   logger.ready("准备移动报告");
@@ -119,7 +126,33 @@ export async function gitDiffDetect() {
   const mdFileName = `${dayjs().format('YYYYMDD_HHmm')}_${jsonName}`;
   writeFileSync(join(process.cwd(), mdFileName), content, { encoding: 'utf-8', flag: 'w' });
   logger.info("报告完成: " + mdFileName);
+  await getEslintCheckResult(today);
   rimraf(join(process.cwd(), today), () => {
     logger.info("临时目录已删除");
   });
+}
+
+export async function getEslintCheckResult(today: string){
+  today = today || dayjs().format('YYYYMDD');
+  logger.ready("准备生成 eslint 类型检查 json");
+  await to(execa.execa(`cd ${today}/target && npx eslint src --ext .js,.jsx,.ts,.tsx --format json -o ${eslintJsonName}`,  {shell: '/bin/bash'}));
+  logger.info("eslint 类型检查 json 生成完成");
+  logger.ready(`读取 ${eslintJsonName} 文件内容,并解析`);
+  let eslintJson: { filePath: string, [p: string]: any }[] = [];
+  {
+    const content = readFileSync(join(process.cwd(), today, 'target', eslintJsonName), "utf-8");
+    try {
+      eslintJson = JSON.parse(content);
+    }
+    catch (error) {
+      logger.error("解析json文件失败");
+    }
+  }
+
+  const validEslintJson = eslintJson.filter(e => {
+    const { filePath, ...rest } = e;
+    return Object.values(rest).some(v => Array.isArray(v) && v.length> 0 || !Array.isArray(v) && v);
+  });
+  writeFileSync(join(process.cwd(), eslintFinalJsonName), JSON.stringify(validEslintJson, null, 2), { encoding: 'utf-8', flag: 'w' });
+  logger.info(`${eslintFinalJsonName} 文件生成`)
 }

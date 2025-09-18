@@ -1,5 +1,4 @@
 import {createDetectReport, DetectReport} from "../report_util";
-import {BlockReport} from "./code_block_detect";
 
 const mapReportType: Record<DetectReport["type"], string> = {
   modify: '修改',
@@ -14,11 +13,12 @@ export function createMdByJson(report: ReturnType<typeof createDetectReport>){
 }
 
 function reportItemToMd(report: ReturnType<typeof createDetectReport>[number]){
-  const { filePath, filesDependsOnMe, type, dangerIdentifiers, blockReports } = report;
+  const { filePath, filesDependsOnMe, type, dangerIdentifiers, undefinedIdentifiers, blockReports } = report;
   return [
       `## ${filePath}`,
       `### 类型: ${mapReportType[type]}`,
-      filesDependsOnMe.length > 0 ? `### 所影响的文件\n${filesDependsOnMe.map((files) => `- ${files.join('、')}`).join('\n')}` : '',
+      filesDependsOnMe.length > 0 ? `### 所影响的文件(重要性由高到低)\n${filesDependsOnMe.map((files, index) =>files.map(file =>("  ").repeat(index) + `- ${file}`)).flat().join('\n')}` : '',
+      undefinedIdentifiers.length > 0 ? `### 未定义的变量\n> ${undefinedIdentifiers.map(e => `**${e}**`).join(', ')}` : '',
       dangerIdentifiers.length > 0 ? `### 重点检查使用的变量\n> ${dangerIdentifiers.join(', ')}` : '',
       blockReports.length > 0 ? `### 对比分析 共${blockReports.length}处` : '',
       ...blockReports.map(blockReportToMd),
@@ -39,19 +39,11 @@ function blockReportToMd(block: ReturnType<typeof createDetectReport>[number]["b
 
 function blockReportInfoItemToMd(info: ReturnType<typeof createDetectReport>[number]["blockReports"][number]["infos"][number], index: number){
   const {
-    kind,
-    added,
-    addedEffects,
-    removed,
-    removedEffects,
+    causeBy,
+    effects
   } = info;
   return [
-    `#### 分类${index + 1}: ${kind}`,
-    added.length > 0 ? `- 新增标识符\n> ${added.join(', ')}` : '',
-    addedEffects.length > 0 ? `- 新增标识符影响\n` : '',
-    addedEffects.map(({ causeBy, effects}) => `> ${causeBy}相关: ${effects.join()}`).join('\n\n'),
-    removed.length > 0 ? `- 删除标识符\n> ${removed.join(', ')}` : '',
-    removedEffects.length > 0 ? `- 删除标识符影响` : '',
-    removedEffects.map(({ causeBy, effects}) => `> ${causeBy}相关: ${effects.join()}`).join('\n\n'),
+    `#### 序号${index + 1}`,
+    effects.length > 0 ? `#### ${causeBy}\n- 影响：\n${effects.map(e => `> ${e}`).join('\n')}` : '',
   ].filter(Boolean).join("\n\n");
 }

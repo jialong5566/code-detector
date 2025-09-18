@@ -1,17 +1,19 @@
 import {GitDiffDetail} from "./format_git_diff_content";
-import codeBlockDetect, {BlockReport} from "./report_util/code_block_detect";
-import getAstKitByFilePath from "./ast_util/getAstKitByFilePath";
-import AstUtil from "./ast_util/AstUtil";
-import {fileIdentifierDetect} from "./report_util/file_identifier_detect";
+import AstUtil, {AstNode} from "./ast_util/AstUtil";
+import {extractUndefinedIdentifiers, fileIdentifierDetect} from "./report_util/file_identifier_detect";
 import getFileDepends from "./report_util/getFileDepends";
+import {BlockReportItem, diffBlockDetect, reportItemDetect} from "./report_util/diffBlockDetect";
 
 export type DetectReport = {
   filePath: string;
   type: "modify" | "add" | "delete";
   // 主要针对 add 和 delete 类型的文件，不包含 modify
   filesDependsOnMe: string[][];
+  undefinedIdentifiers: string[];
   dangerIdentifiers: string[];
-  blockReports: BlockReport[];
+  _fileAddedNodesPaths: { node: AstNode, nodePath: string, blockIndex: number }[];
+  _fileRemovedNodesPaths: { node: AstNode, nodePath: string, blockIndex: number }[];
+  blockReports: BlockReportItem[];
 };
 
 type Arg = {
@@ -33,58 +35,44 @@ export function createDetectReport(arg: Arg){
         filePath,
         type,
         filesDependsOnMe,
+        undefinedIdentifiers: [],
         dangerIdentifiers: [],
+        _fileAddedNodesPaths: [],
+        _fileRemovedNodesPaths: [],
         blockReports: []
       }
       reports.push(reportItem);
     }
+    reportItem.undefinedIdentifiers = extractUndefinedIdentifiers(filePath, absPathPrefix);
     reportItem.dangerIdentifiers = fileIdentifierDetect(filePath, absPathPrefix);
     if(type === "modify"){
-      codeBlockDetect({ gitDiffItem: item, absPathPrefix, blockReports: reportItem.blockReports, index });
+      diffBlockDetect(item, index, { reportItem, absPathPrefix});
     }
   });
-  return reports.map(report => {
-    const filePath = report.filePath;
-    // todo 过滤 ext
-    const astKit = getAstKitByFilePath(filePath, absPathPrefix);
-    const allNodes = new Map([...astKit.mapUuidToNode.values()].map(ele => [AstUtil.getNodePath(ele), ele]));
+  return reports.map(reportItem => {
+    const { _fileAddedNodesPaths, _fileRemovedNodesPaths, filePath, blockReports,  ...reportProperties } = reportItem;
+    reportItemDetect(reportItem, absPathPrefix);
+    const fileAddedNodesPaths = reportItem._fileAddedNodesPaths.map(item => item.nodePath);
+    const fileRemovedNodesPaths = reportItem._fileRemovedNodesPaths.map(item => item.nodePath);
     return {
-      ...report,
-      blockReports: report.blockReports.map(blockReport => {
-        const { infos, diff_txt } = blockReport;
-        const infosList = infos.map(info => {
-          const { addedEffects, removedEffects, topAdded, topRemoved, ...rest } = info;
-          const removedEffectsInfos = removedEffects.map(item => {
-            const tmpList = item.effects.map(ele => {
-              // todo
-              const nodePath = AstUtil.getNodePath(ele);
-              const item = allNodes.get(nodePath);
-              return item && AstUtil.createScopeContent(item);
-            }).filter(Boolean);
-            const effects= [...new Set(tmpList)];
-            return {
-              causeBy: item.causeBy.name || item.causeBy.type,
-              effects
-            }
-          }).filter(item => item.effects.length > 0);
-          const addedEffectsInfos = addedEffects.map(item => {
-            const effects = [...new Set(item.effects.map(AstUtil.createScopeContent))];
-            return {
-              causeBy: item.causeBy.name || item.causeBy.type,
-              effects
-            }
-          }).filter(item => item.effects.length > 0);
+      filePath,
+      ...reportProperties,
+      blockReports: blockReports.map(blockReport => {
+        const { diff_txt } = blockReport;
+        const addNodeAndPaths = blockReport.addNodeAndPaths.filter(e => fileAddedNodesPaths.includes(e.nodePath));
+        const infosList = addNodeAndPaths.map(item => {
+          const { node } = item;
+          const { effectIds } = node._util;
           return {
-            ...rest,
-            addedEffects: addedEffectsInfos,
-            removedEffects: removedEffectsInfos,
-          };
+            causeBy: AstUtil.getShortNodeMsg(node),
+            effects: [...effectIds].map(e => AstUtil.getShortNodeMsg(e))
+          }
         });
         return {
           diff_txt,
-          infos: infosList,
+          infos: infosList.filter(e => e.effects.length > 0),
         };
-      })
+      }).filter(e => e.infos.length > 0)
     }
   });
 };

@@ -30,7 +30,6 @@ export interface AstNode {
     inject: Set<AstNode>,
     provide: Set<AstNode>,
     effectIds: Set<AstNode>,
-    crossScope: Set<AstNode>,
   }
 }
 
@@ -44,16 +43,21 @@ export default class AstUtil {
     return [...node._util.ancestors, node].map(n => n.type).join(':') + ":" + node.name;
   }
 
-  static deepFirstTravel(node: AstNode, filePath: string, mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>>){
+  static getShortNodeMsg(node: AstNode){
+    const { _util: { startLine, startColumn, endLine, endColumn }} = node;
+    return `${node.name || node.type}「${startLine}:${startColumn}, ${endLine}:${endColumn}」`;
+  }
+
+  static deepFirstTravel(node: AstNode, filePath: string, mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>>, mapPathToNodeSet: Map<string, Set<AstNode>>){
     const visitedNodeSet = new Set<typeof node>();
     if(!node){
       return ;
     }
-    return this._deepFirstTravel(node, visitedNodeSet, {filePath, depth:0, mapUuidToNode, mapFileLineToNodeSet})
+    return this._deepFirstTravel(node, visitedNodeSet, {filePath, depth:0, mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet})
   }
-  private static _deepFirstTravel(node: AstNode, visitedNodeSet: Set<typeof node>, extra: { filePath: string, depth: number, mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>> }){
+  private static _deepFirstTravel(node: AstNode, visitedNodeSet: Set<typeof node>, extra: { filePath: string, depth: number, mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>>, mapPathToNodeSet: Map<string, Set<AstNode>> }){
     visitedNodeSet.add(node);
-    const { filePath, depth, mapUuidToNode, mapFileLineToNodeSet } = extra;
+    const { filePath, depth, mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet } = extra;
     const _util: AstNode['_util'] = {
       startLine: NaN,
       endLine: NaN,
@@ -75,7 +79,6 @@ export default class AstUtil {
       inject: new Set<AstNode>(),
       provide: new Set<AstNode>(),
       effectIds: new Set<AstNode>(),
-      crossScope: new Set<AstNode>(),
     }
     node._util = _util;
     // 存储 当前 ast 节点下的 所有的 node 集合
@@ -90,14 +93,14 @@ export default class AstUtil {
         return;
       }
       if(this.isValidNodeCollect(nodeValue)){
-        const childNode = this._deepFirstTravel(nodeValue, visitedNodeSet, { filePath, depth: depth +1, mapUuidToNode, mapFileLineToNodeSet})
+        const childNode = this._deepFirstTravel(nodeValue, visitedNodeSet, { filePath, depth: depth +1, mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet})
         nodeCollection.push(childNode, ...childNode._util.nodeCollection);
         children.push(childNode);
         childNode._util.parentProperty = nodeKey;
       }
       else if(this.isValidArrayNodeCollect(nodeValue)){
         const validNodeArray = (nodeValue as AstNode[]).filter(nodeItem => this.isValidNodeCollect(nodeItem)).map(v => {
-          return this._deepFirstTravel(v, visitedNodeSet, { filePath, depth: depth +1, mapUuidToNode, mapFileLineToNodeSet})
+          return this._deepFirstTravel(v, visitedNodeSet, { filePath, depth: depth +1, mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet})
         });
         nodeCollection.push(...validNodeArray.map( n => [n, ...n._util.nodeCollection]).flat());
         children.push(...validNodeArray);
@@ -113,8 +116,10 @@ export default class AstUtil {
     /** 所有 所持有的 标识符收集完成后，开始收集依赖的标识符 */
     this.collectDependenceIds(node);
     this.collectInjectAndProvide(node as AstNode & { body: AstNode|null});
-    this.collectEffectId(node);
-    this.updateLoc(node, { mapUuidToNode, mapFileLineToNodeSet });
+    if(node.type === "Program"){
+      nodeCollection.forEach(child => this.collectEffectId(child));
+    }
+    this.updateLoc(node, { mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet });
     return node;
   }
 
@@ -213,7 +218,7 @@ export default class AstUtil {
       const params = (node as unknown as { params: AstNode[] }).params;
       params.forEach(param => this._deepFindIdentifier(param, id => {
         holdingIds.add(id || node);
-        id._util.variableScope = [id || node];
+        id._util.variableScope = [id];
         id._util.holdingIdType = "Param";
       }))
     }
@@ -234,53 +239,24 @@ export default class AstUtil {
   }
 
   private static collectDependenceIds(node: AstNode){
-    // todo 这里需要重构，因为这里的逻辑太复杂了。
     const { nodeCollection, dependenceIds, holdingIdNameMap } = node._util;
     nodeCollection.forEach(e => {
       this.findExportIdentifiers(e, id => dependenceIds.add(id));
       this.collectExpressionIdentifiers(e, id => dependenceIds.add(id));
-      // if(e.type === "Identifier" && e._util.holdingIdType === null){
-      //   dependenceIds.add(e);
-      // }
     });
     for (const dependenceId of dependenceIds) {
+      // todo 全局变量不处理 JSXIdentifier 的 开合标签 进行判断
       if(dependenceId._util.variableScope.length === 0){
         const sameNameIds = [...( holdingIdNameMap.get(dependenceId.name!) || [])];
         dependenceId._util.variableScope.push(...sameNameIds);
         const firstPick = sameNameIds[0];
-        if(firstPick){
+        if(firstPick && firstPick._util.uuid !== dependenceId._util.uuid){
           firstPick._util.effectIds.add(dependenceId);
-          this.markDependenceIdCrossScope(dependenceId, firstPick);
         }
       }
     }
   }
 
-  private static markDependenceIdCrossScope(node: AstNode, scopeId: AstNode){
-    const isParamsElement = scopeId._util.parentProperty === "params";
-    const isCalleeId = node._util.parent?.type === "CallExpression" && node._util.parentProperty === "callee"
-    if(isParamsElement && isCalleeId){
-      const fn = scopeId._util.parent!;
-      // todo
-      const isFn = fn.type === "FunctionExpression" || fn.type === "ArrowFunctionExpression";
-      const isFnInVarDec = fn._util.parentProperty === "init" && fn._util.parent?.type === "VariableDeclarator";
-      const isFnInAssign = fn._util.parentProperty === "right" && fn._util.parent?.type === "AssignmentExpression";
-      if(isFn && isFnInVarDec ){
-        const idHolderOfFn = (fn._util.parent as unknown as { id: AstNode }).id;
-        idHolderOfFn._util.effectIds.add(node);
-        node._util.crossScope.add(idHolderOfFn);
-      }
-      else if(isFn && isFnInAssign){
-        const idHolderOfFn = (fn._util.parent as unknown as { left: AstNode }).left;
-        idHolderOfFn._util.effectIds.add(node);
-        node._util.crossScope.add(idHolderOfFn);
-      }
-      else if(fn.type === "FunctionDeclaration"){
-        fn._util.effectIds.add(node);
-        node._util.crossScope.add(fn);
-      }
-    }
-  }
 
   private static isUseStateVarDec(node: AstNode): node is (AstNode & { type: "VariableDeclarator", id: { type: "ArrayPattern", elements: (null|AstNode)[]}, init: { type: "CallExpression", callee: AstNode, arguments: [AstNode]|[]} }) {
      if(node.type !== "VariableDeclarator") return false;
@@ -314,13 +290,14 @@ export default class AstUtil {
       this.collectEffectIdOfAssign(node);
       return;
     }
-    if(node.type === "CallExpression"){
-      this.collectEffectIdOfFnCall(node);
-      return;
-    }
     const isDeleteOperator = "UnaryExpression" === node.type && (node as any).operator === "delete";
     if(isDeleteOperator || ["UpdateExpression"].includes(node.type)){
       this.collectEffectIdOfUnaryUpdate(node);
+      return;
+    }
+    if(node.type === "CallExpression"){
+      this.collectEffectIdOfFnCall(node);
+      return;
     }
   }
 
@@ -328,22 +305,37 @@ export default class AstUtil {
     if(node.type !== "CallExpression"){
       return;
     }
-    const { callee } = node as unknown as { callee: AstNode };
-    const scopeId = callee.type === "MemberExpression" ? this.getRootIdentifierOfMemberExpression(callee)._util.variableScope[0] : callee._util.variableScope[0];
-    if(!scopeId) return;
-    const isParamsElement = scopeId._util.parentProperty === "params";
-    if(isParamsElement){
-      const fnNode = scopeId._util.parent!;
-      const isFn = fnNode.type === "FunctionExpression" || fnNode.type === "ArrowFunctionExpression";
-      const isFnInVarDec = fnNode._util.parentProperty === "init" && fnNode._util.parent?.type === "VariableDeclarator";
-      const isFnInAssign = fnNode._util.parentProperty === "right" && fnNode._util.parent?.type === "AssignmentExpression";
-      const isFnInClassMethod = fnNode._util.parentProperty === "value" && fnNode._util.parent?.type === "MethodDefinition";
-      if(isFn && (isFnInVarDec || isFnInAssign || isFnInClassMethod)){
-        const idHolderOfFn = (fnNode as unknown as { id?: AstNode }).id;
-        idHolderOfFn ? idHolderOfFn._util.effectIds.add(node) : fnNode._util.effectIds.add(node);
+    const idSet = new Set<AstNode>();
+    this.collectExpressionIdentifiers(node, id => idSet.add(id));
+    for (const id of idSet) {
+      if(id._util.variableScope.length === 0){
+        continue;
       }
-      else if(fnNode.type === "FunctionDeclaration"){
-        fnNode._util.effectIds.add(node);
+      const scopeId = id._util.variableScope[0];
+
+      const isParamsElement = scopeId._util.parentProperty === "params";
+      if(isParamsElement){
+        const fnNode = scopeId._util.parent!;
+        if(fnNode.type === "FunctionExpression" || fnNode.type === "ArrowFunctionExpression"){
+          if(fnNode._util.parentProperty === "init" && fnNode._util.parent?.type === "VariableDeclarator"){
+            (fnNode._util.parent as unknown as { id: AstNode }).id._util.effectIds.add(id);
+          }
+          else if(fnNode._util.parentProperty === "right" && fnNode._util.parent?.type === "AssignmentExpression"){
+            (fnNode._util.parent as unknown as { left: AstNode }).left._util.effectIds.add(id);
+          }
+          else if(fnNode._util.parentProperty === "value" && fnNode._util.parent?.type === "MethodDefinition"){
+            (fnNode._util.parent as unknown as { key: AstNode }).key._util.effectIds.add(id);
+          }
+        }
+        else if(fnNode.type === "FunctionDeclaration"){
+          fnNode._util.effectIds.add(id);
+        }
+      }
+      const kindOfParamsElement = [...scopeId._util.effectIds].filter(e => e._util.variableScope[0]?._util.holdingIdType === "Param");
+      if(kindOfParamsElement.length > 0){
+        kindOfParamsElement.map(ele => {
+          ele._util.variableScope[0]._util.parent?._util.effectIds.add(id);
+        });
       }
     }
   }
@@ -460,8 +452,7 @@ export default class AstUtil {
     if(node.type === "ExportNamedDeclaration" && Array.isArray(node.specifiers)){
       for (const specifier of node.specifiers) {
         if(specifier.type === "ExportSpecifier"){
-          const local = (specifier as unknown as { local: AstNode }).local;
-          callback(local);
+          callback((specifier as unknown as { local: AstNode }).local);
         }
       }
     }
@@ -620,8 +611,7 @@ export default class AstUtil {
   private static findIdOfImport(node: AstNode, callback: (identifier: AstNode) => void){
     const specifiers = (node as unknown as { specifiers: AstNode[]}).specifiers;
     for (const specifier of specifiers) {
-      const local = (specifier as unknown as { local: AstNode}).local;
-      callback(local);
+      callback((specifier as unknown as { local: AstNode}).local);
     }
   }
 
@@ -664,14 +654,14 @@ export default class AstUtil {
     }
   }
 
-  private static updateLoc(astNode: AstNode, extra: { mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>> }) {
+  private static updateLoc(astNode: AstNode, extra: { mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>>, mapPathToNodeSet: Map<string, Set<AstNode>> }) {
     const { _util, type, name } = astNode;
-    const { mapUuidToNode, mapFileLineToNodeSet } = extra;
-    const { nodeCollection, filePath } = _util;
+    const { mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet } = extra;
+    const { nodeCollection, filePath, parent } = _util;
     _util.startLine = Math.min(...nodeCollection.map(n => n.loc?.start?.line!), astNode.loc?.start.line!);
     _util.endLine = Math.max(...nodeCollection.map(n => n.loc?.end?.line!), astNode.loc?.end.line!);
-    _util.startColumn = Math.min(...nodeCollection.map(n => n.loc?.start?.column!), astNode.loc?.start.column!);
-    _util.endColumn = Math.max(...nodeCollection.map(n => n.loc?.end?.column!), astNode.loc?.end.column!);
+    _util.startColumn = astNode.loc?.start.column ?? Math.min(...nodeCollection.map(n => n.loc?.start?.column!), astNode.loc?.start.column!);
+    _util.endColumn = astNode.loc?.end.column ?? Math.max(...nodeCollection.map(n => n.loc?.end?.column!), astNode.loc?.end.column!);
     _util.uuid = `${filePath}:${type}:${name}「${_util.startLine}:${_util.startColumn},${_util.endLine}:${_util.endColumn}」`;
     mapUuidToNode.set(_util.uuid, astNode);
 
@@ -681,6 +671,13 @@ export default class AstUtil {
     }
     if(astNode.type === "Program"){
       mapUuidToNode.set(astNode.type, astNode);
+    }
+    if(parent === null){
+      nodeCollection.forEach(n => {
+        const path = AstUtil.getNodePath(n);
+        mapPathToNodeSet.set(path, mapPathToNodeSet.get(path) || new Set());
+        mapPathToNodeSet.get(path)?.add(n);
+      });
     }
   }
 
