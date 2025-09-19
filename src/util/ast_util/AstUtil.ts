@@ -639,13 +639,13 @@ export default class AstUtil {
     if(id.type === "ObjectPattern"){
       const properties = (id as unknown as { properties: AstNode[]}).properties;
       for (const property of properties) {
-        if(property.type === "Property"){
-          const value = (property as unknown as { value: AstNode}).value;
-          this._deepFindIdentifier(value, callback);
-        }
-        else if(property.type === "RestElement"){
+        if(property.type === "RestElement"){
           const argument = (property as unknown as { argument: AstNode}).argument;
           this._deepFindIdentifier(argument, callback);
+        }
+        else {
+          const value = (property as unknown as { value: AstNode}).value;
+          this._deepFindIdentifier(value, callback);
         }
       }
     }
