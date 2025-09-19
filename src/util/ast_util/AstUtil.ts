@@ -644,8 +644,11 @@ export default class AstUtil {
           this._deepFindIdentifier(argument, callback);
         }
         else {
-          const value = (property as unknown as { value: AstNode}).value;
+          const { value, key, computed } = property as unknown as { value: AstNode, key: AstNode, computed: boolean};
           this._deepFindIdentifier(value, callback);
+          if(computed){
+            this._deepFindIdentifier(key, callback);
+          }
         }
       }
     }
