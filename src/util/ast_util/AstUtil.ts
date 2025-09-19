@@ -196,16 +196,16 @@ export default class AstUtil {
     if(node.body && this.isBodyArray(node.body)){
       const { body } = node.body;
       body.forEach((cur) => {
-        if(node.type === "FunctionDeclaration" || node.type === "ClassDeclaration"){
-          const id = (node as unknown as { id: AstNode|null }).id;
+        if(cur.type === "FunctionDeclaration" || cur.type === "ClassDeclaration"){
+          const id = (cur as unknown as { id: AstNode|null }).id;
           if(id){
             holdingIds.add(id);
             id._util.variableScope = [id];
             id._util.holdingIdType = node.type === "ClassDeclaration" ? "Class" : "Function";
           }
         }
-        else if(node.type === "VariableDeclaration"){
-          this.findIdOfVariable(node, id => {
+        else if(cur.type === "VariableDeclaration"){
+          this.findIdOfVariable(cur, id => {
             holdingIds.add(id);
             id._util.variableScope = [id];
             id._util.holdingIdType = "Variable";
@@ -639,8 +639,14 @@ export default class AstUtil {
     if(id.type === "ObjectPattern"){
       const properties = (id as unknown as { properties: AstNode[]}).properties;
       for (const property of properties) {
-        const value = (property as unknown as { value: AstNode}).value;
-        this._deepFindIdentifier(value, callback);
+        if(property.type === "Property"){
+          const value = (property as unknown as { value: AstNode}).value;
+          this._deepFindIdentifier(value, callback);
+        }
+        else if(property.type === "RestElement"){
+          const argument = (property as unknown as { argument: AstNode}).argument;
+          this._deepFindIdentifier(argument, callback);
+        }
       }
     }
     if(id.type === "ArrayPattern"){
