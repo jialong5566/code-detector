@@ -11,10 +11,11 @@ import {readSrcFiles} from "./util/shared/readDirFiles";
 import Core from "./util/ast_util/Core";
 import {SOURCE} from "./util/constants";
 import to from "await-to-js";
+import {generateGitDiffReport} from "./util/report_util/generateGitDiffReport";
 
 const jsonName = "git_diff_report.md";
-const gitDiffFileName = "git_diff.txt";
-const gitDiffJsonName = "git_diff.json";
+export const gitDiffFileName = "git_diff.txt";
+export const gitDiffJsonName = "git_diff.json";
 const eslintJsonName = "eslint-report.json";
 const eslintFinalJsonName = "eslint-final-report.json";
 
@@ -118,9 +119,12 @@ export async function gitDiffDetect() {
   logger.ready("准备生成插件文件");
   writeFileSync(join(process.cwd(), today, 'target', 'plugin.ts'), pluginFileContent, { encoding: 'utf-8', flag: 'w' });
   logger.info("插件文件生成完成");
-  logger.wait("准备生成报告");
-  await execa.execa(`cd ${today}/target && yarn install && npm run build`,  {shell: '/bin/bash'});
-  logger.info("报告生成完成！");
+  logger.wait("准备生成 入口文件");
+  await execa.execa(`cd ${today}/target && npx max setup`,  {shell: '/bin/bash'});
+  logger.info("入口文件 生成完成！");
+  logger.ready("准备生成报告");
+  await generateGitDiffReport({ targetDirPath: join(process.cwd(), today, 'target') });/**/
+  logger.info("报告完成");
   logger.ready("准备移动报告");
   const content = readFileSync(join(process.cwd(), today, 'target', jsonName), "utf-8");
   const mdFileName = `${dayjs().format('YYYYMDD_HHmm')}_${jsonName}`;

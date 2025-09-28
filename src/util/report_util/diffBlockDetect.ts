@@ -1,6 +1,6 @@
 import {GitDiffDetail} from "../format_git_diff_content";
 import getAstKitByFilePath from "../ast_util/getAstKitByFilePath";
-import {join} from "path";
+import {dirname, join} from "path";
 import {SOURCE, TARGET} from "../constants";
 import AstUtil, {AstNode} from "../ast_util/AstUtil";
 import {DetectReport} from "../report_util";
@@ -44,8 +44,9 @@ export function diffBlockDetect(gitDiffDetail: GitDiffDetail, index: number, ext
   /** diff 块报告对象 */
   const blockReportItem = findOrCreateBlockReport(blockReports, index);
 
-  const { mapFileLineToNodeSet, mapUuidToNode } = getAstKitByFilePath(filePath, absPathPrefix);
-  const filePathOfOld = join(process.cwd(), '..', SOURCE, filePath);
+  const filePathOfOld = join(dirname(absPathPrefix), SOURCE, filePath);
+  const filePathOfNew = join(dirname(absPathPrefix), TARGET, filePath);
+  const { mapFileLineToNodeSet, mapUuidToNode } = getAstKitByFilePath(filePathOfNew, absPathPrefix);
   const { mapFileLineToNodeSet: mapFileLineToNodeSetOld } = getAstKitByFilePath(filePathOfOld, absPathPrefix.replace(`${TARGET}/`, `${SOURCE}/`));
   const programNode = mapUuidToNode.get("Program");
   if(programNode){

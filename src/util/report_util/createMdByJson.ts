@@ -17,7 +17,7 @@ function reportItemToMd(report: ReturnType<typeof createDetectReport>[number]){
   return [
       `## ${filePath}`,
       `### 类型: ${mapReportType[type]}`,
-      filesDependsOnMe.length > 0 ? `### 所影响的文件(重要性由高到低)\n${filesDependsOnMe.map((files, index) =>files.map(file =>("  ").repeat(index) + `- ${file}`)).flat().join('\n')}` : '',
+      filesDependsOnMe.length > 0 ? `### 所影响的文件(重要性由高到低)\n${filesDependsOnMe.slice(0, 1).map((files, index) =>files.map(file =>("  ").repeat(index) + `- ${file}`)).flat().join('\n')}` : '',
       undefinedIdentifiers.length > 0 ? `### 未定义的变量\n> ${undefinedIdentifiers.map(e => `**${e}**`).join(', ')}` : '',
       dangerIdentifiers.length > 0 ? `### 重点检查使用的变量\n> ${dangerIdentifiers.join(', ')}` : '',
       blockReports.length > 0 ? `### 对比分析 共${blockReports.length}处` : '',

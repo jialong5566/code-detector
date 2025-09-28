@@ -3,6 +3,7 @@ import AstUtil, {AstNode} from "./ast_util/AstUtil";
 import {extractUndefinedIdentifiers, fileIdentifierDetect} from "./report_util/file_identifier_detect";
 import getFileDepends from "./report_util/getFileDepends";
 import {BlockReportItem, diffBlockDetect, reportItemDetect} from "./report_util/diffBlockDetect";
+import { join } from "path";
 
 export type DetectReport = {
   filePath: string;
@@ -43,8 +44,8 @@ export function createDetectReport(arg: Arg){
       }
       reports.push(reportItem);
     }
-    reportItem.undefinedIdentifiers = extractUndefinedIdentifiers(filePath, absPathPrefix);
-    reportItem.dangerIdentifiers = fileIdentifierDetect(filePath, absPathPrefix);
+    reportItem.undefinedIdentifiers = extractUndefinedIdentifiers(join(absPathPrefix, filePath), absPathPrefix);
+    reportItem.dangerIdentifiers = fileIdentifierDetect(join(absPathPrefix, filePath), absPathPrefix);
     if(type === "modify"){
       diffBlockDetect(item, index, { reportItem, absPathPrefix});
     }

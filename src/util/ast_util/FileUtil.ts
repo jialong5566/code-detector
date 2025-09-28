@@ -1,6 +1,7 @@
 import * as babelParse from "@babel/parser";
 import * as vueParse from "vue-eslint-parser";
 import {AstFeatNode} from "./AstFeatUtil";
+import fs from "fs";
 
 
 export const extensionsOfJs = ['.js', '.jsx', '.ts', '.tsx'];
@@ -114,7 +115,12 @@ export default class FileUtil {
   }
 
   static getASTByFilePath(filePath: string){
-    const fileContent = require('fs').readFileSync(filePath, 'utf8');
-    return this.parseFile(filePath, fileContent)[1];
+    const existFlag = fs.existsSync(filePath);
+    if(existFlag){
+      const fileContent = fs.readFileSync(filePath, 'utf8');
+      return this.parseFile(filePath, fileContent)[1];
+    }
+    console.warn("文件不存在: " + filePath);
+    return null;
   }
 }
