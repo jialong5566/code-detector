@@ -9,7 +9,7 @@ import dayjs from "dayjs";
 import {createMdByJson} from "./util/report_util/createMdByJson";
 import {readSrcFiles} from "./util/shared/readDirFiles";
 import Core from "./util/ast_util/Core";
-import {SOURCE} from "./util/constants";
+import {SOURCE, TARGET} from "./util/constants";
 import to from "await-to-js";
 import {generateGitDiffReport} from "./util/report_util/generateGitDiffReport";
 
@@ -104,33 +104,29 @@ export async function gitDiffDetect() {
   logger.ready("准备生成临时工作目录...")
   await execa.execa(`mkdir -p ${today}`, {shell: '/bin/bash'});
   logger.info("临时目录建立完成");
-  logger.ready("准备clone源代码到临时目录下的target文件夹")
-  await execa.execa(`git clone ${gitUrl} ${today}/target`, {shell: '/bin/bash'});
+  logger.ready(`准备clone源代码到临时目录下的 ${TARGET} 文件夹`)
+  await execa.execa(`git clone ${gitUrl} ${today}/${TARGET}`, {shell: '/bin/bash'});
   logger.info("源代码clone完成");
   logger.ready(`准备clone源代码到临时目录下的 ${SOURCE} 文件夹`)
   await execa.execa(`git clone ${gitUrl} ${today}/${SOURCE}`, {shell: '/bin/bash'});
   logger.info("源代码clone完成");
   logger.ready("准备切换到目标分支")
-  await execa.execa(`cd ${today}/target && git fetch origin ${branchName}:${branchName} && git checkout ${branchName}`, {shell: '/bin/bash'});
+  await execa.execa(`cd ${today}/${TARGET} && git fetch origin ${branchName}:${branchName} && git checkout ${branchName}`, {shell: '/bin/bash'});
   logger.info("分支切换完成");
   logger.ready("准备生成git_diff.txt文件")
-  await execa.execa(`cd ${today}/target && git diff master..${branchName} --unified=0 --output=${gitDiffFileName}`, {shell: '/bin/bash'});
+  await execa.execa(`cd ${today}/${TARGET} && git diff master..${branchName} --unified=0 --output=${gitDiffFileName}`, {shell: '/bin/bash'});
   logger.info("git_diff.txt文件生成完成");
-  logger.ready("准备生成插件文件");
-  writeFileSync(join(process.cwd(), today, 'target', 'plugin.ts'), pluginFileContent, { encoding: 'utf-8', flag: 'w' });
-  logger.info("插件文件生成完成");
   logger.wait("准备生成 入口文件");
-  await execa.execa(`cd ${today}/target && npx max setup`,  {shell: '/bin/bash'});
+  await execa.execa(`cd ${today}/${TARGET} && npx max setup`,  {shell: '/bin/bash'});
   logger.info("入口文件 生成完成！");
   logger.ready("准备生成报告");
-  await generateGitDiffReport({ targetDirPath: join(process.cwd(), today, 'target') });/**/
+  await generateGitDiffReport({ targetDirPath: join(process.cwd(), today, 'target') });
   logger.info("报告完成");
   logger.ready("准备移动报告");
-  const content = readFileSync(join(process.cwd(), today, 'target', jsonName), "utf-8");
+  const content = readFileSync(join(process.cwd(), today, TARGET, jsonName), "utf-8");
   const mdFileName = `${dayjs().format('YYYYMDD_HHmm')}_${jsonName}`;
   writeFileSync(join(process.cwd(), mdFileName), content, { encoding: 'utf-8', flag: 'w' });
   logger.info("报告完成: " + mdFileName);
-  await getEslintCheckResult(today);
   rimraf(join(process.cwd(), today), () => {
     logger.info("临时目录已删除");
   });

@@ -53,25 +53,32 @@ export function createDetectReport(arg: Arg){
   return reports.map(reportItem => {
     const { _fileAddedNodesPaths, _fileRemovedNodesPaths, filePath, blockReports,  ...reportProperties } = reportItem;
     reportItemDetect(reportItem, absPathPrefix);
+    /** 汇总后 新增的节点路径 */
     const fileAddedNodesPaths = reportItem._fileAddedNodesPaths.map(item => item.nodePath);
+    /** 汇总后 删除的节点路径 */
     const fileRemovedNodesPaths = reportItem._fileRemovedNodesPaths.map(item => item.nodePath);
     return {
       filePath,
       ...reportProperties,
       blockReports: blockReports.map(blockReport => {
         const { diff_txt } = blockReport;
+        /** 用汇总的结果进行过滤 得到真正的新增节点 */
         const addNodeAndPaths = blockReport.addNodeAndPaths.filter(e => fileAddedNodesPaths.includes(e.nodePath));
         const infosList = addNodeAndPaths.map(item => {
           const { node } = item;
-          const { effectIds } = node._util;
+          const { effectIds, occupation, holdingIdType } = node._util;
           return {
-            causeBy: AstUtil.getShortNodeMsg(node),
-            effects: [...effectIds].map(e => AstUtil.getShortNodeMsg(e))
+            causeBy: AstUtil.getShortNodeMsg(node, true),
+            effects: holdingIdType ? [...occupation].map((occupationId) => {
+              const ans = AstUtil.getAncestorsFromBirth(occupationId, node)
+              return AstUtil.getNearestImpactedNode(ans.reverse());
+            }).filter(Boolean).map(e => AstUtil.getShortNodeMsg(e!, true)): [...effectIds].map(e => AstUtil.getShortNodeMsg(e, true)),
+            occupations: [...occupation].map(e => AstUtil.getShortNodeMsg(e, true))
           }
         });
         return {
           diff_txt,
-          infos: infosList.filter(e => e.effects.length > 0),
+          infos: infosList.filter(e => e.effects.length > 0 || e.occupations.length > 0),
         };
       }).filter(e => e.infos.length > 0)
     }

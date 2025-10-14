@@ -3,7 +3,7 @@ import { intrinsicElements, standardAttributes } from "./intrinsicElements";
 export interface AstNode {
   computed?: boolean;
   type: string;
-  name?: string;
+  name?: string|AstNode;
   start?: number | null;
   end?: number | null;
   loc?: Record<'start'|'end', { line: number, column: number }> | null;
@@ -31,10 +31,9 @@ export interface AstNode {
     inject: Set<AstNode>,
     provide: Set<AstNode>,
     effectIds: Set<AstNode>,
+    occupation: Set<AstNode>,
   }
 }
-
-const globalDependenceIds = new Set<AstNode>();
 
 export default class AstUtil {
   static invalidNodeKey = [
@@ -46,9 +45,66 @@ export default class AstUtil {
     return [...node._util.ancestors, node].map(n => n.type).join(':') + ":" + node.name;
   }
 
-  static getShortNodeMsg(node: AstNode){
-    const { _util: { startLine, startColumn, endLine, endColumn }} = node;
-    return `${node.name || node.type}「${startLine}:${startColumn}, ${endLine}:${endColumn}」`;
+  static getShortNodeMsg(node: AstNode, hideParentProperty = false){
+    const { _util: { startLine, startColumn, endLine, endColumn, parentProperty, indexOfProperty }} = node;
+    let type = node.type;
+    let name = node.name;
+    if(name && typeof name === "object"){
+      type = name.type;
+      name = name.name;
+    }
+    const msg = [
+      hideParentProperty ? [] : [parentProperty, indexOfProperty !== null ? String(indexOfProperty) : null],
+      [type, name]
+    ].map((e: any[]) => e.filter(Boolean).join(":")).filter(Boolean).join(' ');
+    return `${msg}「${startLine}:${startColumn}, ${endLine}:${endColumn}」`;
+  }
+
+  static getAncestorsFromBirth(occupationId: AstNode, sourceId: AstNode){
+    const { _util: { ancestors }} = occupationId;
+    return ancestors.filter(ancestor => !sourceId._util.ancestors.includes(ancestor));
+  }
+
+  static getNearestImpactedNode(ancestors: AstNode[]){
+    for (const ancestor of ancestors) {
+      const impactedNode = this.getImpactedNode(ancestor);
+      if(impactedNode){
+        return impactedNode
+      }
+    }
+  }
+
+  private static getImpactedNode(ancestor: AstNode){
+    const { type } = ancestor;
+    if(type === "JSXOpeningElement"){
+      const { name } = (ancestor as unknown as { name: AstNode }).name;
+      if(name && typeof name === "object"){
+        const realName = name.name as string;
+        if(!this.intrinsicElements.includes(realName)){
+          return name;
+        }
+      }
+    }
+    if(type === "JSXElement"){
+      const { openingElement } = (ancestor as unknown as { openingElement: AstNode });
+      const { name } = openingElement;
+      if(name && typeof name === "object"){
+        const realName = name.name as string;
+        if(!this.intrinsicElements.includes(realName)){
+          return name;
+        }
+      }
+    }
+    if(type === "VariableDeclarator"){
+      return (ancestor as unknown as { id: AstNode }).id;
+    }
+    if(type === "AssignmentExpression"){
+      return (ancestor as unknown as { left: AstNode }).left;
+    }
+    if(type === "FunctionDeclaration"){
+      return (ancestor as unknown as { id: AstNode|null }).id || ancestor;
+    }
+    return null;
   }
 
   static deepFirstTravel(node: AstNode, filePath: string, mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>>, mapPathToNodeSet: Map<string, Set<AstNode>>){
@@ -83,6 +139,7 @@ export default class AstUtil {
       inject: new Set<AstNode>(),
       provide: new Set<AstNode>(),
       effectIds: new Set<AstNode>(),
+      occupation: new Set<AstNode>(),
     }
     node._util = _util;
     // 存储 当前 ast 节点下的 所有的 node 集合
@@ -250,7 +307,7 @@ export default class AstUtil {
       });
     }
     // 收集函数参数的变量名
-    if(["FunctionDeclaration", "ArrowFunctionExpression", "FunctionExpression", "ObjectMethod"].includes(node.type)){
+    if(["FunctionDeclaration", "ArrowFunctionExpression", "FunctionExpression", "ObjectMethod", "ClassMethod"].includes(node.type)){
       (node as unknown as { params: AstNode[] }).params.forEach(param => this._deepFindIdentifier(param, id => {
         holdingIds.add(id || node);
         id._util.variableScope = [id];
@@ -259,6 +316,7 @@ export default class AstUtil {
     }
     holdingIds.forEach(holdingId => {
       const holdingIdName = holdingId.name!;
+      if(typeof holdingIdName !== "string") return;
       const nodeSetOfIdName = holdingIdNameMap.get(holdingIdName) || new Set<AstNode>();
       nodeSetOfIdName.add(holdingId);
       holdingIdNameMap.set(holdingIdName, nodeSetOfIdName);
@@ -274,7 +332,7 @@ export default class AstUtil {
   }
 
   private static collectDependenceIds(node: AstNode){
-    const { type, _util } = node;
+    const { _util } = node;
     const { dependenceIds, holdingIdNameMap, children, dependenceIdsNoScope } = _util;
     children.forEach(child => {
       if(child._util.dependenceIdsNoScope.size > 0){
@@ -286,18 +344,15 @@ export default class AstUtil {
 
     for (const dependenceId of dependenceIds) {
       // todo 全局变量不处理 JSXIdentifier 的 开合标签 进行判断
+      if(dependenceId._util.variableScope.length === 0 && typeof dependenceId.name === "string" && holdingIdNameMap.has(dependenceId.name)){
+        dependenceId._util.variableScope.push(...[...holdingIdNameMap.get(dependenceId.name)!]);
+        const firstPick = dependenceId._util.variableScope[0];
+        if(firstPick && firstPick._util.uuid !== dependenceId._util.uuid){
+          firstPick._util.occupation.add(dependenceId);
+        }
+      }
       if(dependenceId._util.variableScope.length === 0){
-        const sameNameIds = [...( holdingIdNameMap.get(dependenceId.name!) || [])];
-        if(sameNameIds.length > 0){
-          dependenceId._util.variableScope.push(...sameNameIds);
-          const firstPick = sameNameIds[0];
-          if(firstPick && firstPick._util.uuid !== dependenceId._util.uuid){
-            firstPick._util.effectIds.add(dependenceId);
-          }
-        }
-        else {
-          dependenceIdsNoScope.add(dependenceId);
-        }
+        dependenceIdsNoScope.add(dependenceId);
       }
     }
   }
@@ -313,14 +368,14 @@ export default class AstUtil {
 
   static isUseMemoVarDec(node: AstNode){
       if(node.type !== "VariableDeclarator") return false;
-      const { id, init } = (node as unknown as { init: AstNode, id: AstNode });
+      const { init } = (node as unknown as { init: AstNode, id: AstNode });
       if(init.type !== "CallExpression") return false;
       const { callee } = init as unknown as { callee: AstNode };
       return (callee.type === "Identifier") && (callee.name === "useMemo");
   }
   private static isUseCallbackVarDec(node: AstNode){
       if(node.type !== "VariableDeclarator") return false;
-      const { id, init } = (node as unknown as { init: AstNode, id: AstNode });
+      const { init } = (node as unknown as { init: AstNode, id: AstNode });
       if(init.type !== "CallExpression") return false;
       const { callee } = init as unknown as { callee: AstNode };
       return (callee.type === "Identifier") && (callee.name === "useCallback");
@@ -363,17 +418,35 @@ export default class AstUtil {
         const fnNode = scopeId._util.parent!;
         if(fnNode.type === "FunctionExpression" || fnNode.type === "ArrowFunctionExpression"){
           if(fnNode._util.parentProperty === "init" && fnNode._util.parent?.type === "VariableDeclarator"){
-            (fnNode._util.parent as unknown as { id: AstNode }).id._util.effectIds.add(id);
+            const fnId = (fnNode._util.parent as unknown as { id: AstNode|null }).id;
+            if(fnId){
+              fnId._util.effectIds.add(id);
+            }
+            else {
+              fnNode._util.effectIds.add(id);
+            }
           }
           else if(fnNode._util.parentProperty === "right" && fnNode._util.parent?.type === "AssignmentExpression"){
             (fnNode._util.parent as unknown as { left: AstNode }).left._util.effectIds.add(id);
           }
-          else if(fnNode._util.parentProperty === "value" && fnNode._util.parent?.type === "MethodDefinition"){
-            (fnNode._util.parent as unknown as { key: AstNode }).key._util.effectIds.add(id);
-          }
         }
         else if(fnNode.type === "FunctionDeclaration"){
-          fnNode._util.effectIds.add(id);
+          const { id: fnId } = fnNode as unknown as { id?: AstNode };
+          if(fnId){
+            fnId._util.effectIds.add(id);
+          }
+          else {
+            fnNode._util.effectIds.add(id);
+          }
+        }
+        else if(fnNode.type === "ClassMethod"){
+          const { key: fnId } = fnNode as unknown as { key?: AstNode };
+          if(fnId){
+            fnId._util.effectIds.add(id);
+          }
+          else {
+            fnNode._util.effectIds.add(id);
+          }
         }
       }
       const kindOfParamsElement = [...scopeId._util.effectIds].filter(e => e._util.variableScope[0]?._util.holdingIdType === "Param");
@@ -404,13 +477,13 @@ export default class AstUtil {
       this.collectEffectIdOfUseCallback(node);
       return;
     }
-    const idSet = new Set<AstNode>();
-    this._deepFindIdentifier(id, ele => idSet.add(ele));
-    const createdExpIdSet = new Set<AstNode>();
-    ["Identifier", "ArrowFunctionExpression", "FunctionExpression"].includes(init.type) ? createdExpIdSet.add(init) : this.collectExpressionIdentifiers(init, id => createdExpIdSet.add(id));
-    // 创建的 每个变量的 effectIds 集合为 createdExpIdSet
-    for (const createdId of idSet) {
-      createdId._util.effectIds = new Set([...createdExpIdSet, ...createdId._util.effectIds]);
+    const leftIdSet = new Set<AstNode>();
+    this._deepFindIdentifier(id, ele => leftIdSet.add(ele));
+    const rightIdSet = new Set<AstNode>();
+    ["Identifier", "ArrowFunctionExpression", "FunctionExpression"].includes(init.type) ? rightIdSet.add(init) : this.collectExpressionIdentifiers(init, id => rightIdSet.add(id));
+    // 创建的 每个变量的 effectIds
+    for (const item of leftIdSet) {
+      item._util.effectIds = new Set([...rightIdSet, ...item._util.effectIds]);
     }
   }
 
@@ -458,21 +531,13 @@ export default class AstUtil {
 
   private static collectEffectIdOfAssign(node: AstNode){
     const { left, right } = node as unknown as { left: AstNode, right: AstNode };
+    const idSetOfLeft = new Set<AstNode>();
+    this.collectExpressionIdentifiers(left, id => idSetOfLeft.add(id));
     const idSetOfRight = new Set<AstNode>();
     this.collectExpressionIdentifiers(right, id => idSetOfRight.add(id));
-    // todo 右边的 影响 左边的
-    if(left.type === "Identifier"){
-      const { left } = node as unknown as { left: AstNode };
-      left._util.effectIds = new Set([...idSetOfRight, ...left._util.effectIds]);
+    for (const id of idSetOfLeft) {
+      id._util.effectIds = new Set([...idSetOfRight, ...id._util.effectIds]);
     }
-    else {
-      const { left } = node as unknown as { left: AstNode };
-      const idSetOfLeft = new Set<AstNode>();
-      this.collectExpressionIdentifiers(left, id => idSetOfLeft.add(id));
-      for (const id of idSetOfLeft) {
-        id._util.effectIds = new Set([...idSetOfRight, ...id._util.effectIds]);
-      }
-    };
   }
 
   private static collectEffectIdOfUnaryUpdate(node: AstNode){
@@ -571,120 +636,6 @@ export default class AstUtil {
     exp._util.nodeCollection.forEach(ele => this._collectExpressionIdentifiers(ele, callback));
   }
 
-  static deepFindIdOfExpression(exp: AstNode|null, callback: (identifier: AstNode) => void) {
-    if (!exp || exp.type === "ThisExpression") {
-      return;
-    }
-    this._deepFindIdOfExpression(exp, callback);
-  }
-
-  private static _deepFindIdOfExpression(exp: AstNode|null, callback: (identifier: AstNode) => void){
-    if(!exp || exp.type === "ThisExpression"){
-      return;
-    }
-
-    if(exp.type === "IfStatement"){
-      const { test, alternate, consequent } = exp as unknown as { test: AstNode, consequent: AstNode, alternate: AstNode };
-      test.type === 'Identifier' ? callback(test) : this._deepFindIdOfExpression(test, callback);
-      this._deepFindIdOfExpression(consequent, callback);
-      this._deepFindIdOfExpression(alternate, callback);
-    }
-    else if(exp.type === "TryStatement"){
-      const { block, finalizer } = exp as unknown as { block: AstNode, finalizer: AstNode };
-      this._deepFindIdOfExpression(block, callback);
-      finalizer && this._deepFindIdOfExpression(finalizer, callback);
-    }
-    else if(exp.type === "SpreadElement"){
-      const { argument } = (exp as unknown as { argument: AstNode });
-      this.expressionTypeIsIdentifier(argument) && callback(argument);
-    }
-    else if(exp.type === "JSXSpreadChild"){
-      const expression = (exp as unknown as { expression: AstNode }).expression;
-      callback(expression);
-    }
-    else if(exp.type === "MemberExpression" || exp.type === "JSXMemberExpression"){
-      const rootIdentifier = this.getRootIdentifierOfMemberExpression(exp);
-      this.expressionTypeIsIdentifier(rootIdentifier) && callback(rootIdentifier);
-    }
-    else if(exp.type === "ObjectExpression"){
-      const properties = (exp as unknown as { properties: AstNode[]}).properties;
-      for (const property of properties) {
-        if(property.type === "SpreadElement"){
-          this._deepFindIdOfExpression(property, callback);
-        }
-        else {
-          const value = (property as unknown as { value: AstNode}).value;
-          this.expressionTypeIsIdentifier(value) ? callback(value) : this._deepFindIdOfExpression(value, callback);
-        }
-      }
-    }
-    else if(exp.type === "ArrayExpression"){
-      const elements = (exp as unknown as { elements: AstNode[]}).elements;
-      for (const element of elements) {
-        this.expressionTypeIsIdentifier(element) ? callback(element) : this._deepFindIdOfExpression(element, callback);
-      }
-    }
-    else if(exp.type === "ArrowFunctionExpression"){
-      const body = (exp as unknown as { body: AstNode}).body;
-      this.expressionTypeIsIdentifier(body) ? callback(body) : this._deepFindIdOfExpression(body, callback);
-    }
-    else if(exp.type === "CallExpression"){
-      const callee = (exp as unknown as { callee: AstNode}).callee;
-      this.expressionTypeIsIdentifier(callee) ? callback(callee) : this._deepFindIdOfExpression(callee, callback);
-
-      const args = (exp as unknown as { arguments: AstNode[]}).arguments;
-      for (const argument of args) {
-        this.expressionTypeIsIdentifier(argument) ? callback(argument) : this._deepFindIdOfExpression(argument, callback);
-      }
-    }
-    else if(exp.type === "AssignmentExpression" || exp.type === "BinaryExpression" || exp.type === "LogicalExpression"){
-      const {left, right} = (exp as unknown as { left: AstNode, right: AstNode});
-      [left, right].forEach(e => this.expressionTypeIsIdentifier(e) ? callback(e) : this._deepFindIdOfExpression(e, callback));
-    }
-    else if(exp.type === "UpdateExpression"){
-      const argument = (exp as unknown as { argument: AstNode}).argument;
-      this.expressionTypeIsIdentifier(argument) ? callback(argument) : this._deepFindIdOfExpression(argument, callback);
-    }
-    else if(exp.type === "SequenceExpression"){
-      const {expressions} = (exp as unknown as { expressions: AstNode[]});
-      for (const expression of expressions) {
-        this.expressionTypeIsIdentifier(expression) ? callback(expression) : this._deepFindIdOfExpression(expression, callback);
-      }
-    }
-    else if(exp.type === "ConditionalExpression"){
-      const { test, consequent, alternate } = (exp as unknown as { test: AstNode, consequent: AstNode, alternate: AstNode });
-      [test, consequent, alternate].forEach(e => this._deepFindIdOfExpression(e, callback));
-    }
-    else if(exp.type === "JSXExpressionContainer"){
-      const { expression } = exp as unknown as { expression: AstNode};
-      expression.name && callback(expression);
-    }
-    else if(exp.type === "JSXIdentifier" && exp._util.parent?.type !== "JSXAttribute"){
-      callback(exp);
-    }
-    else if(exp.type === "JSXAttribute"){
-      const value = (exp as unknown as { value: AstNode|null}).value;
-      value && this._deepFindIdOfExpression(value, callback);
-    }
-    else if(exp.type === "JSXElement"){
-      const openingElement = (exp as unknown as { openingElement: AstNode}).openingElement;
-      this._deepFindIdOfExpression(openingElement, callback);
-    }
-    else if(exp.type === "JSXOpeningElement"){
-      const { name, attributes } = exp as unknown as { name: AstNode, attributes: AstNode[] };
-      this._deepFindIdOfExpression(name, callback);
-      for (const attribute of attributes) {
-        this._deepFindIdOfExpression(attribute, callback);
-      }
-    }
-  }
-
-  private static getRootIdentifierOfMemberExpression(memExp: AstNode): AstNode{
-    if(memExp.type === "MemberExpression" || memExp.type === "JSXMemberExpression"){
-      return this.getRootIdentifierOfMemberExpression((memExp as unknown as { object: AstNode}).object);
-    }
-    return memExp;
-  }
 
   private static findIdOfImport(node: AstNode, callback: (identifier: AstNode) => void){
     const specifiers = (node as unknown as { specifiers: AstNode[]}).specifiers;
@@ -788,15 +739,15 @@ export default class AstUtil {
     return id._util.variableScope.length === 0 && !this.isPropertyOfGlobal(id) && !this.isIntrinsicElement(id) && !this.isStandardAttribute(id)
   }
   static isPropertyOfGlobal(node: AstNode): boolean {
-    return node.type === "Identifier" && !node._util.variableScope.length && this.windowProperties.includes(node.name!);
+    return node.type === "Identifier" && !node._util.variableScope.length && typeof node.name === "string" && this.windowProperties.includes(node.name!);
   }
 
   static isIntrinsicElement(node: AstNode){
-    return (node.type === "JSXIdentifier" && node._util.parent?.type && ["JSXOpeningElement", "JSXClosingElement"].includes(node._util.parent.type) && this.intrinsicElements.includes(node.name!))
+    return (node.type === "JSXIdentifier" && node._util.parent?.type && ["JSXOpeningElement", "JSXClosingElement"].includes(node._util.parent.type) && typeof node.name === "string" && this.intrinsicElements.includes(node.name!))
   }
 
   static isStandardAttribute(node: AstNode){
-    return (node._util.parent!.type === "JSXAttribute" && this.standardAttributes.includes(node.name!))
+    return (node._util.parent!.type === "JSXAttribute" && typeof node.name === "string" && this.standardAttributes.includes(node.name!))
   }
 
   static getTopScopeNodesByLineNumberRange(mapFileLineToNodeSet: Map<number, Set<AstNode>>, lineNumberStart: number, lineNumberEnd: number){

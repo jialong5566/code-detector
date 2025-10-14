@@ -40,6 +40,7 @@ export function diffBlockDetect(gitDiffDetail: GitDiffDetail, index: number, ext
   const { filePath, startLineOfNew, items, startLineOfOld } = gitDiffDetail;
   /** 文件报告对象 */
   const { reportItem, absPathPrefix } = extra;
+  /** 文件增加的节点 & 文件减少的节点 */
   const { blockReports, _fileRemovedNodesPaths, _fileAddedNodesPaths } = reportItem;
   /** diff 块报告对象 */
   const blockReportItem = findOrCreateBlockReport(blockReports, index);
@@ -63,7 +64,7 @@ export function diffBlockDetect(gitDiffDetail: GitDiffDetail, index: number, ext
     const removeNodeAndPaths = removeNodes.map(e => createPathsOfNodes(e, index)).flat();
     blockReportItem.addNodeAndPaths = addNodeAndPaths;
     blockReportItem.removeNodeAndPaths = removeNodeAndPaths;
-
+    /** 汇总到文件的节点统计中 */
     _fileAddedNodesPaths.push(...addNodeAndPaths);
     _fileRemovedNodesPaths.push(...removeNodeAndPaths);
   }
