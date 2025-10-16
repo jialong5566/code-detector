@@ -1,9 +1,12 @@
 import {GitDiffDetail} from "./format_git_diff_content";
 import AstUtil, {AstNode} from "./ast_util/AstUtil";
-import {extractUndefinedIdentifiers, fileIdentifierDetect} from "./report_util/file_identifier_detect";
+import {
+  extractUndefinedIdentifiers,
+} from "./report_util/file_identifier_detect";
 import getFileDepends from "./report_util/getFileDepends";
 import {BlockReportItem, diffBlockDetect, reportItemDetect} from "./report_util/diffBlockDetect";
 import { join } from "path";
+import {SOURCE, TARGET} from "./constants";
 
 export type DetectReport = {
   filePath: string;
@@ -45,7 +48,7 @@ export function createDetectReport(arg: Arg){
       reports.push(reportItem);
     }
     reportItem.undefinedIdentifiers = extractUndefinedIdentifiers(join(absPathPrefix, filePath), absPathPrefix);
-    reportItem.dangerIdentifiers = fileIdentifierDetect(join(absPathPrefix, filePath), absPathPrefix);
+    // reportItem.dangerIdentifiers = fileIdentifierDetect(join(absPathPrefix, filePath), absPathPrefix);
     if(type === "modify"){
       diffBlockDetect(item, index, { reportItem, absPathPrefix});
     }
@@ -56,10 +59,11 @@ export function createDetectReport(arg: Arg){
     /** 汇总后 新增的节点路径 */
     const fileAddedNodesPaths = reportItem._fileAddedNodesPaths.map(item => item.nodePath);
     /** 汇总后 删除的节点路径 */
-    const fileRemovedNodesPaths = reportItem._fileRemovedNodesPaths.map(item => item.nodePath);
+    const fileRemovedNodesPaths = reportItem._fileRemovedNodesPaths.map(item => AstUtil.getShortNodeMsg(item.node, true));
     return {
       filePath,
       ...reportProperties,
+      dangerIdentifiers: fileRemovedNodesPaths,
       blockReports: blockReports.map(blockReport => {
         const { diff_txt } = blockReport;
         /** 用汇总的结果进行过滤 得到真正的新增节点 */
@@ -69,16 +73,17 @@ export function createDetectReport(arg: Arg){
           const { effectIds, occupation, holdingIdType } = node._util;
           return {
             causeBy: AstUtil.getShortNodeMsg(node, true),
-            effects: holdingIdType ? [...occupation].map((occupationId) => {
+            effectsUpstream: [...effectIds].map(e => AstUtil.getShortNodeMsg(e, true)),
+            occupations: [...occupation].map(e => AstUtil.getShortNodeMsg(e, true)),
+            effectsDownstream: holdingIdType ? [...occupation].map((occupationId) => {
               const ans = AstUtil.getAncestorsFromBirth(occupationId, node)
               return AstUtil.getNearestImpactedNode(ans.reverse());
-            }).filter(Boolean).map(e => AstUtil.getShortNodeMsg(e!, true)): [...effectIds].map(e => AstUtil.getShortNodeMsg(e, true)),
-            occupations: [...occupation].map(e => AstUtil.getShortNodeMsg(e, true))
+            }).filter(Boolean).map(e => AstUtil.getShortNodeMsg(e!, true)): [],
           }
         });
         return {
           diff_txt,
-          infos: infosList.filter(e => e.effects.length > 0 || e.occupations.length > 0),
+          infos: infosList.filter(e => e.effectsUpstream.length > 0 || e.occupations.length > 0 || e.effectsDownstream.length > 0),
         };
       }).filter(e => e.infos.length > 0)
     }
