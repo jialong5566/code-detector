@@ -99,11 +99,14 @@ export async function generateGitDiffReport(arg: { targetDirPath: string }){
   const usingFileNoPrefix = Object.keys(tree);
   const usingFilePaths = usingFileNoPrefix.map(item => winPath(join(absPathPrefix, item)));
   const groupGitDiffLines = gitDiffDetail.filter(item => usingFileNoPrefix.includes(item.filePath));
+  const changedFilePaths = groupGitDiffLines.map(item => item.filePath);
   const time = dayjs().format('YYYYMDD_HHmm');
   // 本地文件的别名
   try {
     const dependenceJson = createDependenceMap(usingFilePaths, parsedAlias, absPathPrefix);
     writeFileSync(join(targetDirPath, "..", "..", `${time}_dependence_map.json`), JSON.stringify(dependenceJson, null, 2), { encoding: 'utf-8', flag: 'w' });
+    const partialDependenceJson = Object.fromEntries(changedFilePaths.map(p => [p, dependenceJson[p]]));
+    writeFileSync(join(targetDirPath, "..", "..", `${time}_partial_dependence_map.json`), JSON.stringify(partialDependenceJson, null, 2), { encoding: 'utf-8', flag: 'w' });
   }
   catch (e) {
     console.warn('dependenceJson 生成失败', e);
