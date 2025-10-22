@@ -72,8 +72,8 @@ export function diffBlockDetect(gitDiffDetail: GitDiffDetail, index: number, ext
 
 export function reportItemDetect(reportItem: DetectReport, absPathPrefix: string){
   const { _fileRemovedNodesPaths, _fileAddedNodesPaths, filePath } = reportItem;
-  const filePathOfOld = join(process.cwd(), '..', SOURCE, filePath);
-  const { mapPathToNodeSet } = getAstKitByFilePath(filePath, absPathPrefix);
+  const filePathOfNew = join(absPathPrefix, filePath);
+  const { mapPathToNodeSet } = getAstKitByFilePath(filePathOfNew, absPathPrefix);
 
   const _fileAddedPaths = _fileAddedNodesPaths.map(e => e.nodePath);
   const _fileRemovedPaths = _fileRemovedNodesPaths.map(e => e.nodePath);

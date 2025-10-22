@@ -20,8 +20,8 @@ const userAliasGetter = (cwd: string, appData: { config: { alias: Record<string,
 
 const reportFileName = "git_diff_report.md";
 
-export async function generateGitDiffReport(arg: { targetDirPath: string }){
-  const { targetDirPath } = arg;
+export async function generateGitDiffReport(arg: { targetDirPath: string, generateFile?: ('dependence_map.json'|'partial_dependence_map.json'|'report.json'|typeof reportFileName)[] }){
+  const { targetDirPath, generateFile = ['dependence_map.json', 'partial_dependence_map.json', 'report.json', reportFileName] } = arg;
   // 获取绝对路径的 src 目录
   const absSrcPath = join(targetDirPath, "src");
   // 读取 git diff 内容，生成 json 文件
@@ -101,19 +101,27 @@ export async function generateGitDiffReport(arg: { targetDirPath: string }){
   const groupGitDiffLines = gitDiffDetail.filter(item => usingFileNoPrefix.includes(item.filePath));
   const changedFilePaths = groupGitDiffLines.map(item => item.filePath);
   const time = dayjs().format('YYYYMDD_HHmm');
+  let dependenceJson: Record<string, any> = {};
+  let partialDependenceJson: Record<string, any> = {};
   // 本地文件的别名
   try {
-    const dependenceJson = createDependenceMap(usingFilePaths, parsedAlias, absPathPrefix);
-    writeFileSync(join(targetDirPath, "..", "..", `${time}_dependence_map.json`), JSON.stringify(dependenceJson, null, 2), { encoding: 'utf-8', flag: 'w' });
-    const partialDependenceJson = Object.fromEntries(changedFilePaths.map(p => [p, dependenceJson[p]]));
-    writeFileSync(join(targetDirPath, "..", "..", `${time}_partial_dependence_map.json`), JSON.stringify(partialDependenceJson, null, 2), { encoding: 'utf-8', flag: 'w' });
+    dependenceJson = createDependenceMap(usingFilePaths, parsedAlias, absPathPrefix);
+    partialDependenceJson = Object.fromEntries(changedFilePaths.map(p => [p, dependenceJson[p]]));
   }
   catch (e) {
     console.warn('dependenceJson 生成失败', e);
   }
-  writeFileSync(join(targetDirPath, "..", "..", `${time}_reports_helper.json`), JSON.stringify({ usingFilePaths, groupGitDiffLines, absPathPrefix, tree, filteredAlias, parsedAlias, tsconfig  }, null, 2), { encoding: 'utf-8', flag: 'w' });
+  // writeFileSync(join(targetDirPath, "..", "..", `${time}_reports_helper.json`), JSON.stringify({ usingFilePaths, groupGitDiffLines, absPathPrefix, tree, filteredAlias, parsedAlias, tsconfig  }, null, 2), { encoding: 'utf-8', flag: 'w' });
   const reports = createDetectReport({ groupGitDiffLines, tree, absPathPrefix });
-  writeFileSync(join(targetDirPath, "..", "..", `${time}_reports.json`), JSON.stringify(reports, null, 2), { encoding: 'utf-8', flag: 'w' });
   const mdContent = createMdByJson(reports);
-  writeFileSync(join(targetDirPath, "..", "..", `${time}_${reportFileName}`), mdContent, { encoding: 'utf-8', flag: 'w' });
+  generateFile.includes('dependence_map.json') && writeFileSync(join(targetDirPath, "..", "..", `${time}_dependence_map.json`), JSON.stringify(dependenceJson, null, 2), { encoding: 'utf-8', flag: 'w' });
+  generateFile.includes('partial_dependence_map.json') && writeFileSync(join(targetDirPath, "..", "..", `${time}_partial_dependence_map.json`), JSON.stringify(partialDependenceJson, null, 2), { encoding: 'utf-8', flag: 'w' });
+  generateFile.includes('report.json') && writeFileSync(join(targetDirPath, "..", "..", `${time}_report.json`), JSON.stringify(reports, null, 2), { encoding: 'utf-8', flag: 'w' });
+  generateFile.includes(reportFileName) && writeFileSync(join(targetDirPath, "..", "..", `${time}_${reportFileName}`), mdContent, { encoding: 'utf-8', flag: 'w' });
+  return {
+    mdContent,
+    dependenceJson,
+    partialDependenceJson,
+    reports,
+  };
 }
