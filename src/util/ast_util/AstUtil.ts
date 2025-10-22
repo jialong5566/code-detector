@@ -32,6 +32,8 @@ export interface AstNode {
     provide: Set<AstNode>,
     effectIds: Set<AstNode>,
     occupation: Set<AstNode>,
+    importedMember: { sourcePath: string, members: { importedName: string, localName: string }[] }[],
+    exportedMember: { sourcePath: string, members: { exportedName: string, localName: string }[], ExportAllDeclaration: boolean }[],
   }
 }
 
@@ -79,20 +81,14 @@ export default class AstUtil {
     if(type === "JSXOpeningElement"){
       const { name } = (ancestor as unknown as { name: AstNode }).name;
       if(name && typeof name === "object"){
-        const realName = name.name as string;
-        if(!this.intrinsicElements.includes(realName)){
-          return name;
-        }
+        return name;
       }
     }
     if(type === "JSXElement"){
       const { openingElement } = (ancestor as unknown as { openingElement: AstNode });
       const { name } = openingElement;
       if(name && typeof name === "object"){
-        const realName = name.name as string;
-        if(!this.intrinsicElements.includes(realName)){
-          return name;
-        }
+        return name;
       }
     }
     if(type === "VariableDeclarator"){
@@ -107,16 +103,16 @@ export default class AstUtil {
     return null;
   }
 
-  static deepFirstTravel(node: AstNode, filePath: string, mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>>, mapPathToNodeSet: Map<string, Set<AstNode>>){
+  static deepFirstTravel(node: AstNode, filePath: string, mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>>, mapPathToNodeSet: Map<string, Set<AstNode>>, stopTravelCallback?: (node: AstNode) => boolean | void){
     const visitedNodeSet = new Set<typeof node>();
     if(!node){
       return ;
     }
-    return this._deepFirstTravel(node, visitedNodeSet, {filePath, depth:0, mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet})
+    return this._deepFirstTravel(node, visitedNodeSet, {filePath, depth:0, mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet, stopTravelCallback})
   }
-  private static _deepFirstTravel(node: AstNode, visitedNodeSet: Set<typeof node>, extra: { filePath: string, depth: number, mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>>, mapPathToNodeSet: Map<string, Set<AstNode>> }){
+  private static _deepFirstTravel(node: AstNode, visitedNodeSet: Set<typeof node>, extra: { filePath: string, depth: number, mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>>, mapPathToNodeSet: Map<string, Set<AstNode>>, stopTravelCallback?: (node: AstNode) => boolean | void }){
     visitedNodeSet.add(node);
-    const { filePath, depth, mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet } = extra;
+    const { filePath, depth, mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet, stopTravelCallback } = extra;
     const _util: AstNode['_util'] = {
       startLine: NaN,
       endLine: NaN,
@@ -140,10 +136,16 @@ export default class AstUtil {
       provide: new Set<AstNode>(),
       effectIds: new Set<AstNode>(),
       occupation: new Set<AstNode>(),
+      importedMember: [],
+      exportedMember: [],
     }
     node._util = _util;
     // 存储 当前 ast 节点下的 所有的 node 集合
     const { nodeCollection, children } = _util;
+    const stopTravel = stopTravelCallback?.(node);
+    if(stopTravel){
+      return node;
+    }
     Object.keys(node).forEach(nodeKey => {
       if(this.invalidNodeKey.includes(nodeKey) || nodeKey.startsWith("TS") || nodeKey.endsWith('Annotation')){
         return;
@@ -154,14 +156,14 @@ export default class AstUtil {
         return;
       }
       if(this.isValidNodeCollect(nodeValue)){
-        const childNode = this._deepFirstTravel(nodeValue, visitedNodeSet, { filePath, depth: depth +1, mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet})
+        const childNode = this._deepFirstTravel(nodeValue, visitedNodeSet, { filePath, depth: depth +1, mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet, stopTravelCallback})
         nodeCollection.push(childNode, ...childNode._util.nodeCollection);
         children.push(childNode);
         childNode._util.parentProperty = nodeKey;
       }
       else if(this.isValidArrayNodeCollect(nodeValue)){
         const validNodeArray = (nodeValue as AstNode[]).filter(nodeItem => this.isValidNodeCollect(nodeItem)).map(v => {
-          return this._deepFirstTravel(v, visitedNodeSet, { filePath, depth: depth +1, mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet})
+          return this._deepFirstTravel(v, visitedNodeSet, { filePath, depth: depth +1, mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet, stopTravelCallback})
         });
         nodeCollection.push(...validNodeArray.map( n => [n, ...n._util.nodeCollection]).flat());
         children.push(...validNodeArray);
@@ -171,17 +173,122 @@ export default class AstUtil {
         });
       }
     });
-    children.forEach(child => child._util.parent = node);
-    nodeCollection.forEach(nodeItem => nodeItem._util.ancestors.unshift(node));
-    this.collectHoldingIds(node as AstNode & { body: AstNode|null});
-    /** 所有 所持有的 标识符收集完成后，开始收集依赖的标识符 */
-    this.collectDependenceIds(node);
-    this.collectInjectAndProvide(node as AstNode & { body: AstNode|null});
-    if(node.type === "Program"){
-      nodeCollection.forEach(child => this.collectEffectId(child));
+    try {
+      children.forEach(child => child._util.parent = node);
+      nodeCollection.forEach(nodeItem => nodeItem._util.ancestors.unshift(node));
     }
-    this.updateLoc(node, { mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet });
+    catch(e: any){
+      console.error('parent ancestors update',e.message);
+    }
+    try {
+      const skip = nodeCollection.some(nodeItem => stopTravelCallback?.(nodeItem));
+      if(!skip){
+        this.collectHoldingIds(node as AstNode & { body: AstNode|null});
+      }
+    }
+    catch(e: any){
+      console.error("collectHoldingIds", e.message);
+    }
+    try {
+      /** 所有 所持有的 标识符收集完成后，开始收集依赖的标识符 */
+      this.collectDependenceIds(node);
+    }
+    catch(e: any){
+      console.error('collectDependenceIds', e.message);
+    }
+    try{
+      this.collectInjectAndProvide(node as AstNode & { body: AstNode|null});
+    }
+    catch(e: any){
+      console.error("collectInjectAndProvide", e.message);
+    }
+    if(node.type === "Program"){
+      try {
+        nodeCollection.forEach(child => this.collectEffectId(child));
+      }
+      catch(e: any){
+        console.error('collectEffectId', e.message);
+      }
+      try {
+        (node as unknown as  { body: AstNode[] }).body.forEach(child => this.updateImportedAndExportedMember(child, node));
+      }
+      catch(e: any){
+        console.error('updateImportedAndExportedMember',e.message);
+      }
+    }
+    try {
+      this.updateLoc(node, { mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet });
+    }
+    catch (e: any) {
+      console.error('updateLoc', e.message);
+    }
     return node;
+  }
+
+  private static updateImportedAndExportedMember(node: AstNode, programNode: AstNode){
+    const { type, source, declaration, specifiers, _util } = node as AstNode & { source: { value: string }, declaration?: null|(AstNode & { declarations: AstNode[] }), specifiers: (AstNode & { local?: { type: string, name: string}, exported: { type: string, name: string } })[] };
+    const { filePath } = _util;
+    const sourceValue = source?.value || filePath;
+    const { importedMember, exportedMember } = programNode._util;
+    if(type === "ImportDeclaration"){
+      specifiers.forEach(specifier => {
+        const { local, imported } = specifier as unknown as { local: AstNode, imported?: AstNode };
+        let target = importedMember.find(v => v.sourcePath === sourceValue);
+        if(!target){
+          target = { sourcePath: sourceValue, members: [] };
+          importedMember.push(target);
+        }
+        target.members.push( {
+          localName: local.name as string,
+          importedName: (imported?.name || "default") as string,
+        });
+      });
+    }
+    if(type === "ExportAllDeclaration"){
+      const target = exportedMember.find(v => v.sourcePath === sourceValue);
+      if(!target){
+        exportedMember.push({ sourcePath: sourceValue, members: [], ExportAllDeclaration: true });
+      }
+    }
+    if(type === "ExportNamedDeclaration"){
+      specifiers.forEach(specifier => {
+        const { local, exported } = specifier as unknown as { local: AstNode, exported: AstNode };
+        let target = exportedMember.find(v => v.sourcePath === sourceValue);
+        if(!target){
+          target = { sourcePath: sourceValue, members: [], ExportAllDeclaration: false };
+          exportedMember.push(target);
+        }
+        target.members.push({
+          localName: (local?.name || "") as string,
+          exportedName: exported.name as string,
+        });
+      });
+      if(Array.isArray(declaration?.declarations)){
+        declaration?.declarations.forEach(dec => {
+          let target = exportedMember.find(v => v.sourcePath === sourceValue);
+          if(!target){
+            target = { sourcePath: sourceValue, members: [], ExportAllDeclaration: false };
+            exportedMember.push(target);
+          }
+          const idName = (dec as any).id?.name;
+          target.members.push({
+            localName: idName as string,
+            exportedName: idName as string,
+          });
+        });
+      }
+    }
+    if(type === "ExportDefaultDeclaration"){
+      let target = exportedMember.find(v => v.sourcePath === filePath);
+      if(!target){
+        target = { sourcePath: filePath, members: [], ExportAllDeclaration: false };
+        exportedMember.push(target);
+      }
+      target.members.push({
+        localName: "default",
+        exportedName: "default",
+      });
+    }
   }
 
   private static collectInjectAndProvide(ast: AstNode){
@@ -343,6 +450,9 @@ export default class AstUtil {
     });
 
     for (const dependenceId of dependenceIds) {
+      if(!dependenceId._util){
+        continue;
+      }
       // todo 全局变量不处理 JSXIdentifier 的 开合标签 进行判断
       if(dependenceId._util.variableScope.length === 0 && typeof dependenceId.name === "string" && holdingIdNameMap.has(dependenceId.name)){
         dependenceId._util.variableScope.push(...[...holdingIdNameMap.get(dependenceId.name)!]);

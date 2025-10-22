@@ -3,16 +3,14 @@ import AstUtil, {AstNode} from "./ast_util/AstUtil";
 import {
   extractUndefinedIdentifiers,
 } from "./report_util/file_identifier_detect";
-import getFileDepends from "./report_util/getFileDepends";
 import {BlockReportItem, diffBlockDetect, reportItemDetect} from "./report_util/diffBlockDetect";
 import { join } from "path";
-import {SOURCE, TARGET} from "./constants";
 
 export type DetectReport = {
   filePath: string;
   type: "modify" | "add" | "delete";
   // 主要针对 add 和 delete 类型的文件，不包含 modify
-  filesDependsOnMe: string[][];
+  filesDependsOnMe: string[];
   undefinedIdentifiers: string[];
   dangerIdentifiers: string[];
   _fileAddedNodesPaths: { node: AstNode, nodePath: string, blockIndex: number }[];
@@ -32,7 +30,7 @@ export function createDetectReport(arg: Arg){
   const reports: DetectReport[] = [];
   groupGitDiffLines.forEach((item, index) => {
     const {filePath, type} = item;
-    const filesDependsOnMe = getFileDepends(filePath, tree);
+    const filesDependsOnMe = tree[filePath] || [];
     let reportItem = reports.find(e => e.filePath === filePath);
     if(!reportItem){
       reportItem = {

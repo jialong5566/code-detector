@@ -1,77 +1,18 @@
 import {readFileSync} from "fs";
 import {join} from "path";
-import {formatGitDiffContent} from "./util/format_git_diff_content";
-import madge_util from "./util/madge_util";
 import {writeFileSync} from "fs";
-import {createDetectReport} from "./util/report_util";
 import {execa, chalk, logger, rimraf} from "@umijs/utils";
 import dayjs from "dayjs";
-import {createMdByJson} from "./util/report_util/createMdByJson";
 import {readSrcFiles} from "./util/shared/readDirFiles";
 import Core from "./util/ast_util/Core";
 import {SOURCE, TARGET} from "./util/constants";
 import to from "await-to-js";
 import {generateGitDiffReport} from "./util/report_util/generateGitDiffReport";
 
-const jsonName = "git_diff_report.md";
 export const gitDiffFileName = "git_diff.txt";
-export const gitDiffJsonName = "git_diff.json";
 const eslintJsonName = "eslint-report.json";
 const eslintFinalJsonName = "eslint-final-report.json";
 
-export async function umiPluginCallback(api: any){
-  const diff_txt = readFileSync(join(api.cwd, gitDiffFileName), "utf-8");
-  const gitDiffDetail = formatGitDiffContent(diff_txt);
-  writeFileSync(join(api.cwd, gitDiffJsonName), JSON.stringify(gitDiffDetail, null, 2), { encoding: 'utf-8', flag: 'w' });
-  const madgeUtil = await madge_util(api);
-  if(!madgeUtil){
-    return;
-  }
-  const { madgeInstance: { tree }, usingFiles } = madgeUtil;
-  const cwd = api.cwd;
-  const absPathPrefix = cwd + '/';
-  const usingFileNoPrefix = usingFiles.map(item => item.filePath.replace(absPathPrefix, ""));
-  const groupGitDiffLines = gitDiffDetail.filter(item => usingFileNoPrefix.includes(item.filePath));
-  const reports = createDetectReport({ groupGitDiffLines, tree, absPathPrefix });
-  writeFileSync(join(api.cwd, "reports.json"), JSON.stringify(reports, null, 2), { encoding: 'utf-8', flag: 'w' });
-  const mdContent = createMdByJson(reports);
-  writeFileSync(join(api.cwd, jsonName), mdContent, { encoding: 'utf-8', flag: 'w' });
-}
-
-const shellFileContent = `#!/bin/sh
-time=$(date "+%Y%-m%d")
-mkdir -p $time
-cd $time
-
-git clone $1 target
-cd target
-yarn install
-
-git fetch origin $2:$2
-git checkout $2
-
-git diff master..$2 --unified=0 --output=git_diff.txt
-cd ..
-git clone $1 source
-`;
-const pluginFileContent = `import * as cb from "js-code-detector"
-
-export default async (api: any) => {
-  const buildCallback = () => cb.umiPluginCallback(api);
-  api.onBuildComplete(buildCallback);
-}`
-export async function writeGitDiffTxt(gitUrl: string, branchName: string){
-  const today = dayjs().format('YYYYMDD');
-  writeFileSync(join(process.cwd(), 'detect.sh'), shellFileContent, { encoding: 'utf-8', flag: 'w' });
-  await execa.execa('chmod +x detect.sh', {shell: '/bin/bash'});
-  const res0 = await execa.execa('sh detect.sh', [gitUrl, branchName], {shell: '/bin/bash'})
-  chalk.green(["临时文件夹建立，源代码clone完成"]);
-  writeFileSync(join(process.cwd(), today, 'target', 'plugin.ts'), pluginFileContent, { encoding: 'utf-8', flag: 'w' });
-  chalk.green(["临时文件写入完成"]);
-  await execa.execa(`cd ${today}/target && npm run build`,  {shell: '/bin/bash'});
-  chalk.green(["临时入口文件生成"]);
-  return readFileSync(join(process.cwd(), today, 'target', jsonName), "utf-8");
-};
 
 export async function getGitRepositoryAndBranch(){
   const res = await execa.execa('git remote get-url origin', {shell: '/bin/bash'});
@@ -84,9 +25,7 @@ export async function getGitRepositoryAndBranch(){
   }
 }
 
-export function generateReport(content: string){
-  writeFileSync(join(process.cwd(), `${dayjs().format('YYYYMDD_HHmm')}_${jsonName}`), content, { encoding: 'utf-8', flag: 'w' });
-}
+
 
 export async function sameCodeDetect(dirOfCwd?: string) {
   const filesAndContent = await readSrcFiles(dirOfCwd);
@@ -102,6 +41,10 @@ export async function gitDiffDetect() {
   const today = dayjs().format('YYYYMDD');
   const { gitUrl, branchName } = await getGitRepositoryAndBranch();
   logger.ready("准备生成临时工作目录...")
+  const [err] = await to(execa.execa(`rm -rf ${today}`, {shell: '/bin/bash'}));
+  if (err) {
+    logger.error("临时目录删除失败");
+  }
   await execa.execa(`mkdir -p ${today}`, {shell: '/bin/bash'});
   logger.info("临时目录建立完成");
   logger.ready(`准备clone源代码到临时目录下的 ${TARGET} 文件夹`)
@@ -120,13 +63,8 @@ export async function gitDiffDetect() {
   await execa.execa(`cd ${today}/${TARGET} && npx max setup`,  {shell: '/bin/bash'});
   logger.info("入口文件 生成完成！");
   logger.ready("准备生成报告");
-  await generateGitDiffReport({ targetDirPath: join(process.cwd(), today, 'target') });
+  await generateGitDiffReport({ targetDirPath: join(process.cwd(), today, TARGET) });
   logger.info("报告完成");
-  logger.ready("准备移动报告");
-  const content = readFileSync(join(process.cwd(), today, TARGET, jsonName), "utf-8");
-  const mdFileName = `${dayjs().format('YYYYMDD_HHmm')}_${jsonName}`;
-  writeFileSync(join(process.cwd(), mdFileName), content, { encoding: 'utf-8', flag: 'w' });
-  logger.info("报告完成: " + mdFileName);
   rimraf(join(process.cwd(), today), () => {
     logger.info("临时目录已删除");
   });

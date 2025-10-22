@@ -17,7 +17,7 @@ function reportItemToMd(report: ReturnType<typeof createDetectReport>[number]){
   return [
       `## ${filePath}`,
       `### 类型: ${mapReportType[type]}`,
-      filesDependsOnMe.length > 0 ? `### 所影响的文件\n${filesDependsOnMe.slice(0, 1).map((files) =>files.map(file =>`- ${file}`)).flat().join('\n')}` : '',
+      filesDependsOnMe.length > 0 ? `### 所影响的文件\n${filesDependsOnMe.map(file =>`- ${file}`).join('\n')}` : '',
       undefinedIdentifiers.length > 0 ? `### 未定义的变量\n> ${undefinedIdentifiers.map(e => `**${e}**`).join(', ')}` : '',
       // todo 拿到具体的节点 对应的 文本
       // dangerIdentifiers.length > 0 ? `### 请确认以下删除是安全的\n${dangerIdentifiers.map(e => `> ${e}`).join('\n')}` : '',
