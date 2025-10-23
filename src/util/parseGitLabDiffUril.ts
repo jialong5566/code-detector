@@ -5,6 +5,7 @@
  * @throws 当输入链接格式不符合要求时抛出错误
  */
 export function parseGitLabCompareUrl(compareUrl: string): {
+  projectPathPart: string;
   gitRepoUrl: string;
   baseBranch: string;
   targetBranch: string;
@@ -48,6 +49,7 @@ export function parseGitLabCompareUrl(compareUrl: string): {
   const gitRepoUrl = `${urlObj.origin}${projectPathPart}.git`;
 
   return {
+    projectPathPart,
     gitRepoUrl,
     baseBranch,
     targetBranch,
