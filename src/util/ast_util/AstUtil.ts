@@ -232,11 +232,18 @@ export default class AstUtil {
     const { importedMember, exportedMember } = programNode._util;
     if(type === "ImportDeclaration"){
       specifiers.forEach(specifier => {
-        const { local, imported } = specifier as unknown as { local: AstNode, imported?: AstNode };
+        const { local, imported } = specifier as unknown as AstNode & { local: AstNode, imported?: AstNode };
         let target = importedMember.find(v => v.sourcePath === sourceValue);
         if(!target){
           target = { sourcePath: sourceValue, members: [] };
           importedMember.push(target);
+        }
+        if(specifier.type === "ImportNamespaceSpecifier"){
+          target.members.push({
+            localName: local.name as string,
+            importedName: "*",
+          });
+          return;
         }
         target.members.push( {
           localName: local.name as string,
