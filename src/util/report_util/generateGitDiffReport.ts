@@ -5,7 +5,7 @@ import {formatGitDiffContent} from "../format_git_diff_content";
 import {aliasUtils, readDirFiles, tsconfigPaths, winPath} from "@umijs/utils";
 import {createDetectReport} from "../report_util";
 import {createMdByJson} from "./createMdByJson";
-import {getMadgeInstance} from "./getMadgeInstance";
+import {getMadgeInstance, IMadgeInstance} from "./getMadgeInstance";
 import {createDependenceMap} from "./createDependenceMap";
 import dayjs from "dayjs";
 
@@ -20,81 +20,12 @@ const userAliasGetter = (cwd: string, appData: { config: { alias: Record<string,
 
 const reportFileName = "git_diff_report.md";
 
-export async function generateGitDiffReport(arg: { targetDirPath: string, generateFile?: ('dependence_map.json'|'partial_dependence_map.json'|'report.json'|typeof reportFileName)[] }){
-  const { targetDirPath, generateFile = ['dependence_map.json', 'partial_dependence_map.json', 'report.json', reportFileName] } = arg;
-  // 获取绝对路径的 src 目录
-  const absSrcPath = join(targetDirPath, "src");
+export async function generateGitDiffReport(arg: { madgeResult: IMadgeInstance, parsedAlias: Record<string, any>, targetDirPath: string, generateFile?: ('dependence_map.json'|'partial_dependence_map.json'|'report.json'|typeof reportFileName)[] }){
+  const { madgeResult, parsedAlias, targetDirPath, generateFile = ['upstream_dependence_map.json', 'dependence_map.json', 'partial_dependence_map.json', 'report.json', reportFileName] } = arg;
+  const { tree } = madgeResult;
   // 读取 git diff 内容，生成 json 文件
   const diff_txt = readFileSync(join(targetDirPath, gitDiffFileName), "utf-8");
   const gitDiffDetail = formatGitDiffContent(diff_txt);
-  // 获取 ts 配置
-  const tsconfig = (await tsconfigPaths.loadConfig(targetDirPath));
-  // 读取 appData.json 文件
-  const appDataContent = readFileSync(join(targetDirPath, "src", ".umi", "appData.json"), "utf-8");
-  let appData: any = { config: null };
-  try {
-    appData = JSON.parse(appDataContent);
-  } catch (e) {
-    console.warn('appData.json 解析失败，将使用默认别名');
-  }
-  // 获取别名配置
-  const userAlias = userAliasGetter(targetDirPath, appData);
-  // 忽略目录正则
-  const exclude: RegExp[] = [/node_modules/, /\.d\.ts$/, /\.umi/];
-  // 忽略方法
-  const isExclude = (path: string) => {
-    return exclude.some((reg) => reg.test(path));
-  };
-
-  // 去除循环的别名
-  const parsedAlias = aliasUtils.parseCircleAlias({
-    alias: userAlias,
-  });
-
-
-  const filteredAlias = Object.keys(parsedAlias).reduce<Record<string, string[]>>(
-      (acc, key) => {
-        const value = parsedAlias[key];
-        if (isExclude(value)) {
-          return acc;
-        }
-        if (tsconfig.paths?.[key]) {
-          return acc;
-        }
-        const tsconfigValue = [join(relative(targetDirPath, value), '/*')];
-        const tsconfigKey = `${key}/*`;
-        if (tsconfig.paths?.[tsconfigKey]) {
-          return acc;
-        }
-        acc[tsconfigKey] = tsconfigValue;
-        return acc;
-      },
-      {},
-  );
-
-
-  const devTmpDir = join(absSrcPath, '.umi');
-
-  const res = await getMadgeInstance(devTmpDir, targetDirPath, exclude, filteredAlias, tsconfig);
-  // get dependence map
-  // treeMap { src/*: [] } 需要把 key 转化为绝对路径
-  // const treeMap = res.tree;
-  // const dependenceMap = Object.keys(treeMap).reduce(
-  //     (acc: Record<string, boolean>, key) => {
-  //       const path = winPath(join(targetDirPath, key));
-  //       acc[path] = true;
-  //       return acc;
-  //     },
-  //     {},
-  // );
-
-  // 在 dependenceMap 里, 且不在 fileExcludeNames 里
-  // const usingFiles = readDirFiles({
-  //   dir: absSrcPath,
-  //   exclude,
-  // }).filter(({ filePath }) => dependenceMap[filePath]);
-
-  const tree = res.tree;
   const absPathPrefix = targetDirPath + '/';
   const usingFileNoPrefix = Object.keys(tree);
   const usingFilePaths = usingFileNoPrefix.map(item => winPath(join(absPathPrefix, item)));
@@ -103,17 +34,19 @@ export async function generateGitDiffReport(arg: { targetDirPath: string, genera
   const time = dayjs().format('YYYYMDD_HHmm');
   let dependenceJson: Record<string, any> = {};
   let partialDependenceJson: Record<string, any> = {};
+  let upstreamDependenceJson: Record<string, any> = {};
   // 本地文件的别名
   try {
     dependenceJson = createDependenceMap(usingFilePaths, parsedAlias, absPathPrefix);
     partialDependenceJson = Object.fromEntries(changedFilePaths.map(p => [p, dependenceJson[p]]));
+    upstreamDependenceJson = Object.fromEntries(changedFilePaths.map(p => [p, madgeResult.depends(p)]));
   }
   catch (e) {
     console.warn('dependenceJson 生成失败', e);
   }
-  // writeFileSync(join(targetDirPath, "..", "..", `${time}_reports_helper.json`), JSON.stringify({ usingFilePaths, groupGitDiffLines, absPathPrefix, tree, filteredAlias, parsedAlias, tsconfig  }, null, 2), { encoding: 'utf-8', flag: 'w' });
   const reports = createDetectReport({ groupGitDiffLines, tree, absPathPrefix });
   const mdContent = createMdByJson(reports);
+  generateFile.includes('upstream_dependence_map.json') && writeFileSync(join(targetDirPath, "..", "..", `${time}_upstream_dependence_map.json`), JSON.stringify(dependenceJson, null, 2), { encoding: 'utf-8', flag: 'w' });
   generateFile.includes('dependence_map.json') && writeFileSync(join(targetDirPath, "..", "..", `${time}_dependence_map.json`), JSON.stringify(dependenceJson, null, 2), { encoding: 'utf-8', flag: 'w' });
   generateFile.includes('partial_dependence_map.json') && writeFileSync(join(targetDirPath, "..", "..", `${time}_partial_dependence_map.json`), JSON.stringify(partialDependenceJson, null, 2), { encoding: 'utf-8', flag: 'w' });
   generateFile.includes('report.json') && writeFileSync(join(targetDirPath, "..", "..", `${time}_report.json`), JSON.stringify(reports, null, 2), { encoding: 'utf-8', flag: 'w' });
@@ -121,6 +54,7 @@ export async function generateGitDiffReport(arg: { targetDirPath: string, genera
   return {
     mdContent,
     dependenceJson,
+    upstreamDependenceJson,
     partialDependenceJson,
     reports,
   };

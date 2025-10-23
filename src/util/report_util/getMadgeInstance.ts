@@ -2,10 +2,10 @@ import {dirname, join} from "path";
 import {resolve} from "@umijs/utils";
 import {MadgeConfig, MadgeInstance, MadgePath} from "madge";
 
-interface IMadgeInstance extends MadgeInstance {
+export interface IMadgeInstance extends MadgeInstance {
   tree: Record<string, string[]>;
 }
-type MadgeFunc = (
+export type MadgeFunc = (
     path: MadgePath,
     config: MadgeConfig,
 ) => Promise<IMadgeInstance>;
