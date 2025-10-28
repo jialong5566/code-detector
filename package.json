@@ -1,6 +1,6 @@
 {
   "name": "js-code-detector",
-  "version": "0.0.29",
+  "version": "0.0.30",
   "description": "",
   "main": "dist/cjs/index.js",
   "types": "dist/cjs/index.d.ts",
@@ -42,7 +42,6 @@
     "dayjs": "^1.11.13",
     "lodash-es": "^4.17.21",
     "madge": "^8.0.0",
-    "tsx": "^4.20.5",
     "vue-eslint-parser": "^10.2.0"
   }
 }
