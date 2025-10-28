@@ -1,4 +1,4 @@
-import { intersection } from "lodash-es";
+import { intersection } from "lodash";
 import sha1 from "crypto-js/sha1";
 import base64 from "crypto-js/enc-base64";
 import { Comment, Node, Identifier} from "@babel/types";

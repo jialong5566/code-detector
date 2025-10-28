@@ -1,4 +1,4 @@
-import {range} from 'lodash-es';
+import {range} from 'lodash';
 import FileUtil, {extensions, FileSegment, MapFilePathToDetail} from "./FileUtil";
 import AstFeatUtil, {AstFeatNode, MapHashKeyToAstNodeSet} from "./AstFeatUtil";
 
