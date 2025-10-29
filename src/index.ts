@@ -5,7 +5,7 @@ import dayjs from "dayjs";
 import {readSrcFiles} from "./util/shared/readDirFiles";
 import Core from "./util/ast_util/Core";
 import {parseGitLabCompareUrl} from "./util/parseGitLabDiffUril";
-import {cloneGitRepoAndGetDiff, gitDiffTool} from "./util/shared/gitDiffTool";
+import {cloneGitRepoAndGetDiff, CloneType, gitDiffTool} from "./util/shared/gitDiffTool";
 
 export const gitDiffFileName = "git_diff.txt";
 
@@ -46,7 +46,7 @@ export async function gitDiffDetectByUrl(inputUrl: string) {
   return gitDiffTool({ ...gitInfo, tempDirPath: today, generateFile: [] });
 }
 
-export async function getUpstreamDependenceJson(inputUrl: string, cloneType?: 'ssh'){
+export async function getUpstreamDependenceJson(inputUrl: string, cloneType?: CloneType){
   const gitInfo = parseGitLabCompareUrl(inputUrl);
   return cloneGitRepoAndGetDiff(gitInfo.gitRepoUrl, gitInfo.targetBranch, cloneType);
 }

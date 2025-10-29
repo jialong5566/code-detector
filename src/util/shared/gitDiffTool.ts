@@ -1,4 +1,4 @@
-import {getSshGitRepoUrl} from "../parseGitLabDiffUril";
+import {getGitRepoUrlByToken, getSshGitRepoUrl} from "../parseGitLabDiffUril";
 import {execa, logger, rimraf, winPath} from "@umijs/utils";
 import to from "await-to-js";
 import {SOURCE, TARGET} from "../constants";
@@ -13,12 +13,18 @@ import dayjs from "dayjs";
 import {readFileSync} from "fs";
 import {formatGitDiffContent} from "../format_git_diff_content";
 
-export async function cloneGitRepo(gitUrl: string, branchName: string, tempDirPath: string, folder: string, cloneType?: 'ssh'){
+export type CloneType = 'ssh'|'token';
+
+export async function cloneGitRepo(gitUrl: string, branchName: string, tempDirPath: string, folder: string, cloneType?: CloneType){
   logger.ready(`准备clone 源代码到临时目录下的 ${tempDirPath}/${folder} 文件夹`);
   let stderr, failed;
   if(cloneType === 'ssh'){
     const sshGitRepoUrl = getSshGitRepoUrl(gitUrl);
     ({ stderr, failed } = await execa.execa(`git clone ${sshGitRepoUrl} ${tempDirPath}/${folder}`, {shell: true}));
+  }
+  else if(cloneType === 'token'){
+    const repoUrl = getGitRepoUrlByToken(gitUrl);
+    ({ stderr, failed } = await execa.execa(`git clone ${repoUrl} ${tempDirPath}/${folder}`, {shell: true}));
   }
   else {
     ({ stderr, failed } = await execa.execa(`git clone ${gitUrl} ${tempDirPath}/${folder}`, {shell: true}));
@@ -34,7 +40,7 @@ export async function cloneGitRepo(gitUrl: string, branchName: string, tempDirPa
   return { failed, stderr };
 }
 
-export async function cloneGitRepoAndGetDiff(gitRepoUrl: string, branchName: string, cloneType?: 'ssh'){
+export async function cloneGitRepoAndGetDiff(gitRepoUrl: string, branchName: string, cloneType?: CloneType){
   const today = dayjs().format('YYYYMDD_HHmmss') + Math.random().toString(36).slice(-5);
   logger.ready("准备生成临时工作目录...")
   const [err] = await to(execa.execa(`rm -rf ${today}`, {shell: true}));
