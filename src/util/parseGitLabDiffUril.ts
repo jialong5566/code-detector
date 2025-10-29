@@ -60,10 +60,9 @@ export function getSshGitRepoUrl(gitRepoUrl: string): string {
   return gitRepoUrl.replace(/https?:\/\/[^/]+/, "git@");
 }
 
-export function getGitRepoUrlByToken(gitRepoUrl: string): string {
+export function getGitRepoUrlByToken(gitRepoUrl: string, gitlabToken: string): string {
   const urlObj = new URL(gitRepoUrl);
-  const gitlabToken = process.env.GITLAB_ACCESS_TOKEN;
-  const gitlabDomain = process.env.GITLAB_DOMAIN || urlObj.hostname;
+  const gitlabDomain = urlObj.hostname;
   const projectPath = urlObj.pathname.replace(/\.git/, '')
 
   // 2. 校验必要参数（无令牌则抛出错误）
