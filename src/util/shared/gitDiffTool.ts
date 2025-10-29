@@ -12,6 +12,7 @@ import {gitDiffFileName} from "../../index";
 import dayjs from "dayjs";
 import {readFileSync} from "fs";
 import {formatGitDiffContent} from "../format_git_diff_content";
+import { cloneRepoWithBranchAndDefault } from "./gitUtil";
 
 export type CloneType = 'ssh'|'token';
 
@@ -27,7 +28,7 @@ export async function cloneGitRepo(gitUrl: string, branchName: string, tempDirPa
     ({ stderr, failed } = await execa.execa(`git clone ${repoUrl} ${tempDirPath}/${folder}`, {shell: true}));
   }
   else {
-    ({ stderr, failed } = await execa.execa(`git clone ${gitUrl} ${tempDirPath}/${folder}`, {shell: true}));
+    await cloneRepoWithBranchAndDefault(gitUrl, `${tempDirPath}/${folder}`, branchName);
   }
   handleExecaError({ failed, stderr });
   logger.info("源代码clone完成");
