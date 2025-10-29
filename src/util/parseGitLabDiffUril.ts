@@ -74,6 +74,6 @@ export function getGitRepoUrlByToken(gitRepoUrl: string): string {
     throw new Error('请传入 GitLab 项目路径（如 dev-team/my-project）');
   }
   // 格式：http://accessToken@gitlab域名/项目路径.git
-  return `http://${gitlabToken}@${gitlabDomain}/${projectPath}.git`;
+  return `http://oauth:${gitlabToken}@${gitlabDomain}/${projectPath}.git`;
 }
 
