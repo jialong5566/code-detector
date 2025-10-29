@@ -54,7 +54,7 @@ export async function cloneGitRepoAndGetDiff(gitRepoUrl: string, branchName: str
   logger.info("临时目录建立完成");
   try {
     let stderr, failed;
-    ({ stderr, failed } = await cloneGitRepo(gitRepoUrl, branchName, today, TARGET, { cloneType }));
+    ({ stderr, failed } = await cloneGitRepo(gitRepoUrl, branchName, today, TARGET, { cloneType, token }));
     handleExecaError({ failed, stderr });
     logger.ready("准备生成git_diff.txt文件");
     ({ stderr, failed } = await execa.execa(`cd ${today}/${TARGET} && git diff master..${branchName} --unified=0 --output=${gitDiffFileName}`, {shell: true}));
