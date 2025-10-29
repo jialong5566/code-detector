@@ -55,3 +55,7 @@ export function parseGitLabCompareUrl(compareUrl: string): {
     targetBranch,
   };
 }
+
+export function getSshGitRepoUrl(gitRepoUrl: string): string {
+  return gitRepoUrl.replace(/https?:\/\/[^/]+/, "git@");
+}

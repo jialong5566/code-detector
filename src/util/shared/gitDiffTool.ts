@@ -1,4 +1,4 @@
-import {parseGitLabCompareUrl} from "../parseGitLabDiffUril";
+import {getSshGitRepoUrl} from "../parseGitLabDiffUril";
 import {execa, logger, rimraf, winPath} from "@umijs/utils";
 import to from "await-to-js";
 import {SOURCE, TARGET} from "../constants";
@@ -13,10 +13,16 @@ import dayjs from "dayjs";
 import {readFileSync} from "fs";
 import {formatGitDiffContent} from "../format_git_diff_content";
 
-export async function cloneGitRepo(gitUrl: string, branchName: string, tempDirPath: string, folder: string){
+export async function cloneGitRepo(gitUrl: string, branchName: string, tempDirPath: string, folder: string, cloneType?: 'ssh'){
   logger.ready(`准备clone 源代码到临时目录下的 ${tempDirPath}/${folder} 文件夹`);
   let stderr, failed;
-  ({ stderr, failed } = await execa.execa(`git clone ${gitUrl} ${tempDirPath}/${folder}`, {shell: true}));
+  if(cloneType === 'ssh'){
+    const sshGitRepoUrl = getSshGitRepoUrl(gitUrl);
+    ({ stderr, failed } = await execa.execa(`git clone ${sshGitRepoUrl} ${tempDirPath}/${folder}`, {shell: true}));
+  }
+  else {
+    ({ stderr, failed } = await execa.execa(`git clone ${gitUrl} ${tempDirPath}/${folder}`, {shell: true}));
+  }
   handleExecaError({ failed, stderr });
   logger.info("源代码clone完成");
   if(branchName !== "master"){
@@ -28,7 +34,7 @@ export async function cloneGitRepo(gitUrl: string, branchName: string, tempDirPa
   return { failed, stderr };
 }
 
-export async function cloneGitRepoAndGetDiff(gitRepoUrl: string, branchName: string){
+export async function cloneGitRepoAndGetDiff(gitRepoUrl: string, branchName: string, cloneType?: 'ssh'){
   const today = dayjs().format('YYYYMDD_HHmmss') + Math.random().toString(36).slice(-5);
   logger.ready("准备生成临时工作目录...")
   const [err] = await to(execa.execa(`rm -rf ${today}`, {shell: true}));
@@ -39,7 +45,7 @@ export async function cloneGitRepoAndGetDiff(gitRepoUrl: string, branchName: str
   logger.info("临时目录建立完成");
   try {
     let stderr, failed;
-    ({ stderr, failed } = await cloneGitRepo(gitRepoUrl, branchName, today, TARGET));
+    ({ stderr, failed } = await cloneGitRepo(gitRepoUrl, branchName, today, TARGET, cloneType));
     handleExecaError({ failed, stderr });
     logger.ready("准备生成git_diff.txt文件");
     ({ stderr, failed } = await execa.execa(`cd ${today}/${TARGET} && git diff master..${branchName} --unified=0 --output=${gitDiffFileName}`, {shell: true}));

@@ -46,7 +46,7 @@ export async function gitDiffDetectByUrl(inputUrl: string) {
   return gitDiffTool({ ...gitInfo, tempDirPath: today, generateFile: [] });
 }
 
-export async function getUpstreamDependenceJson(inputUrl: string){
+export async function getUpstreamDependenceJson(inputUrl: string, cloneType?: 'ssh'){
   const gitInfo = parseGitLabCompareUrl(inputUrl);
-  return cloneGitRepoAndGetDiff(gitInfo.gitRepoUrl, gitInfo.targetBranch);
+  return cloneGitRepoAndGetDiff(gitInfo.gitRepoUrl, gitInfo.targetBranch, cloneType);
 }
