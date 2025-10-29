@@ -14,7 +14,7 @@ const userAliasGetter = (cwd: string, appData: { config: { alias: Record<string,
 };
 
 export async function umi4SetUp({ targetDirPath } : { targetDirPath: string }){
-  const shellExeResult = await execa.execa(`cd ${targetDirPath} && npx max setup`,  {shell: '/bin/bash'});
+  const shellExeResult = await execa.execa(`cd ${targetDirPath} && npx max setup`,  {shell: true});
   // 获取 ts 配置
   const tsconfig = (await tsconfigPaths.loadConfig(targetDirPath));
   // 读取 appData.json 文件

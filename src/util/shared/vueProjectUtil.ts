@@ -5,7 +5,7 @@ import {MadgeFunc} from "../report_util/getMadgeInstance";
 
 const webpackConfigFileName = '__webpack.config.js';
 export async function vueSetUp({ targetDir } : { targetDir: string }){
-  const shellExeResult = await execa.execa(`cd ${targetDir} && npx vue-cli-service inspect --verbose`,  {shell: '/bin/bash'});
+  const shellExeResult = await execa.execa(`cd ${targetDir} && npx vue-cli-service inspect --verbose`,  {shell: true});
   const { failed, stdout} = shellExeResult;
   const filePath = join(targetDir, webpackConfigFileName);
   if(!failed){
