@@ -14,7 +14,6 @@ const userAliasGetter = (cwd: string, appData: { config: { alias: Record<string,
 };
 
 export async function umi4SetUp({ targetDirPath } : { targetDirPath: string }){
-  const minVersion = getMinVersion(join(targetDirPath, "package.json"), '@umijs/max');
   logger.info(`正在安装 @umijs/max@ 并执行 setup 脚本...`);
   const shellExeResult = await execa.execa(`cd ${targetDirPath} && yarn remove @umijs/max && yarn add @umijs/max && npx max setup`,  {shell: true});
   // 获取 ts 配置
