@@ -1,8 +1,7 @@
 import {aliasUtils, execa, tsconfigPaths, logger} from "@umijs/utils";
-import {readFileSync} from "fs";
+import {existsSync, readFileSync} from "fs";
 import {join, relative} from "path";
 import {getMadgeInstance} from "../report_util/getMadgeInstance";
-import {getMinVersion} from "./getRepoSupportFlag";
 
 const userAliasGetter = (cwd: string, appData: { config: { alias: Record<string, string> } }) => {
   return appData.config?.alias || {
@@ -14,7 +13,12 @@ const userAliasGetter = (cwd: string, appData: { config: { alias: Record<string,
 };
 
 export async function umi4SetUp({ targetDirPath } : { targetDirPath: string }){
-  logger.info(`正在安装 @umijs/max@ 并执行 setup 脚本...`);
+  logger.info(`正在删除 yarn.lock 文件...`);
+  const yarnLockPath = join(targetDirPath, 'yarn.lock');
+  if(existsSync(yarnLockPath)){
+    await execa.execa(`mv ${yarnLockPath} ${join(targetDirPath, 'yarn.lock.bak')}`, {shell: true});
+  }
+  logger.info(`正在安装 @umijs/max 并执行 setup 脚本...`);
   const shellExeResult = await execa.execa(`cd ${targetDirPath} && yarn remove @umijs/max && yarn add @umijs/max && npx max setup`,  {shell: true});
   // 获取 ts 配置
   const tsconfig = (await tsconfigPaths.loadConfig(targetDirPath));
