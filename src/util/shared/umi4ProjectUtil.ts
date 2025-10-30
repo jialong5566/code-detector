@@ -19,7 +19,7 @@ export async function umi4SetUp({ targetDirPath } : { targetDirPath: string }){
     await execa.execa(`mv ${yarnLockPath} ${join(targetDirPath, 'yarn.lock.bak')}`, {shell: true});
   }
   logger.info(`正在安装 @umijs/max 并执行 setup 脚本...`);
-  const shellExeResult = await execa.execa(`cd ${targetDirPath} && yarn remove @umijs/max && yarn add @umijs/max && npx max setup`,  {shell: true});
+  const shellExeResult = await execa.execa(`cd ${targetDirPath} && npm uninstall @umijs/max && npm install @umijs/max && npx max setup`,  {shell: true});
   // 获取 ts 配置
   const tsconfig = (await tsconfigPaths.loadConfig(targetDirPath));
   // 读取 appData.json 文件
