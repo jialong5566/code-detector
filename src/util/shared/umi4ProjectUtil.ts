@@ -1,8 +1,8 @@
-import {aliasUtils, execa, tsconfigPaths} from "@umijs/utils";
-import {TARGET} from "../constants";
+import {aliasUtils, execa, tsconfigPaths, logger} from "@umijs/utils";
 import {readFileSync} from "fs";
 import {join, relative} from "path";
 import {getMadgeInstance} from "../report_util/getMadgeInstance";
+import {getMinVersion} from "./getRepoSupportFlag";
 
 const userAliasGetter = (cwd: string, appData: { config: { alias: Record<string, string> } }) => {
   return appData.config?.alias || {
@@ -14,13 +14,15 @@ const userAliasGetter = (cwd: string, appData: { config: { alias: Record<string,
 };
 
 export async function umi4SetUp({ targetDirPath } : { targetDirPath: string }){
-  const shellExeResult = await execa.execa(`cd ${targetDirPath} && npx max setup`,  {shell: true});
+  const minVersion = getMinVersion(join(targetDirPath, "package.json"), '@umijs/max');
+  logger.info(`正在安装 @umijs/max@ 并执行 setup 脚本...`);
+  const shellExeResult = await execa.execa(`cd ${targetDirPath} && yarn remove @umijs/max && yarn add @umijs/max && npx max setup`,  {shell: true});
   // 获取 ts 配置
   const tsconfig = (await tsconfigPaths.loadConfig(targetDirPath));
   // 读取 appData.json 文件
-  const appDataContent = readFileSync(join(targetDirPath, "src", ".umi", "appData.json"), "utf-8");
   let appData: any = { config: null };
   try {
+    const appDataContent = readFileSync(join(targetDirPath, "src", ".umi", "appData.json"), "utf-8");
     appData = JSON.parse(appDataContent);
   } catch (e) {
     console.warn('appData.json 解析失败，将使用默认别名');

@@ -1,4 +1,5 @@
 import {readFileSync, existsSync} from "fs";
+import { semver } from "@umijs/utils";
 
 export function getRepoType(jsonPath:string){
   const isExist = existsSync(jsonPath);
@@ -20,18 +21,17 @@ export function getRepoType(jsonPath:string){
     return null;
   }
 }
-
-export function getRepoSupportFlag(jsonPath:string){
-  const isExist = existsSync(jsonPath);
-  if(!isExist) return false;
+export function getMinVersion(jsonPath:string, depName:string){
   const packageJson = readFileSync(jsonPath, "utf-8");
-  if(!packageJson) return false;
+  if(!packageJson) return null;
   try{
     const packageJsonObj = JSON.parse(packageJson);
-    const supportFlag = !!(packageJsonObj.dependencies?.['@umijs/max']);
-    return supportFlag;
+    const v = packageJsonObj?.dependencies?.[depName] || packageJsonObj?.devDependencies?.[depName];
+    if(v){
+      return semver.minVersion(v);
+    }
   }
   catch (e) {
-    return false;
+    return null;
   }
 }
