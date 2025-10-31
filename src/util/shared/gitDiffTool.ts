@@ -24,10 +24,11 @@ export async function cloneGitRepoAndGetDiff(gitRepoUrl: string, branchName: str
   if (err) {
     logger.error("临时目录删除失败");
   }
-  await execa.execa(`mkdir -p ${today}`, {shell: true});
+  let stderr, failed;
+  ({ stderr, failed } = await execa.execa(`mkdir -p ${today}`, {shell: true}));
+  handleExecaError({ failed, stderr });
   logger.info("临时目录建立完成");
   try {
-    let stderr, failed;
     logger.ready(`准备clone 源代码到临时目录下的 ${today}/${TARGET} 文件夹`);
     const repoUrl = getGitRepoUrlByToken(gitRepoUrl, token || '');
     await cloneRepoWithBranchAndDefault(repoUrl, branchName, join(today, TARGET));

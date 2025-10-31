@@ -67,7 +67,7 @@ export function getGitRepoUrlByToken(gitRepoUrl: string, gitlabToken: string): s
 
   // 2. 校验必要参数（无令牌则抛出错误）
   if (!gitlabToken) {
-    throw new Error('未配置 GitLab accessToken，请通过 GITLAB_ACCESS_TOKEN 环境变量传入');
+    throw new Error('未传入 GitLab accessToken');
   }
   if (!projectPath) {
     throw new Error('请传入 GitLab 项目路径（如 dev-team/my-project）');
