@@ -53,6 +53,14 @@ export function createDetectReport(arg: Arg){
   });
   return reports.map(reportItem => {
     const { _fileAddedNodesPaths, _fileRemovedNodesPaths, filePath, blockReports,  ...reportProperties } = reportItem;
+    const topEffectedExportsAdded = _fileAddedNodesPaths.map(e => {
+      const { node } = e;
+      return AstUtil.findExportedMembersNameFromAncestors(node);
+    }).flat();
+    const topEffectedExportsRemoved = _fileRemovedNodesPaths.map(e => {
+      const { node } = e;
+      return AstUtil.findExportedMembersNameFromAncestors(node);
+    }).flat();
     reportItemDetect(reportItem, absPathPrefix);
     /** 汇总后 新增的节点路径 */
     const fileAddedNodesPaths = reportItem._fileAddedNodesPaths.map(item => item.nodePath);
@@ -62,6 +70,8 @@ export function createDetectReport(arg: Arg){
       filePath,
       ...reportProperties,
       dangerIdentifiers: fileRemovedNodesPaths,
+      topEffectedExportsAdded: [...new Set(topEffectedExportsAdded)],
+      topEffectedExportsRemoved: [...new Set(topEffectedExportsRemoved)],
       blockReports: blockReports.map(blockReport => {
         const { diff_txt } = blockReport;
         /** 用汇总的结果进行过滤 得到真正的新增节点 */

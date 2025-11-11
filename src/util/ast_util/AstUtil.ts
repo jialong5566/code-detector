@@ -43,6 +43,8 @@ export default class AstUtil {
     "tokens",
   ];
 
+  static EXPORT_DECLARATION_TYPES = ["FunctionDeclaration", "TSEnumDeclaration", "TSInterfaceDeclaration", "TSTypeAliasDeclaration", "ClassDeclaration"];
+
   static getNodePath(node: AstNode){
     return [...node._util.ancestors, node].map(n => n.type).join(':') + ":" + node.name;
   }
@@ -147,7 +149,8 @@ export default class AstUtil {
       return node;
     }
     Object.keys(node).forEach(nodeKey => {
-      if(this.invalidNodeKey.includes(nodeKey) || nodeKey.startsWith("TS") || nodeKey.endsWith('Annotation')){
+      // const isTs = nodeKey.startsWith("TS") || nodeKey.endsWith('Annotation');
+      if(this.invalidNodeKey.includes(nodeKey)){
         return;
       }
       // @ts-ignore
@@ -225,6 +228,92 @@ export default class AstUtil {
     return node;
   }
 
+  private static findRelatedExportNameOfDeclarationIdentifier(id: AstNode){
+    const occupationInExport = [...id._util.occupation].filter(op => (["ExportSpecifier", "ExportDefaultDeclaration"] as any[]).includes(op._util.parent?.type));
+    for (const op of occupationInExport) {
+      const occupationParentType = op._util.parent?.type;
+      if(occupationParentType === "ExportSpecifier"){
+        return (op._util.parent as any).exported.name;
+      }
+      if(occupationParentType === "ExportDefaultDeclaration"){
+        return "default";
+      }
+    }
+  }
+
+  static findExportedMembersNameFromAncestors(node: AstNode|undefined|null) {
+    if(!node){
+      console.warn("findExportedMembersNameFromAncestors: node is null");
+      return [];
+    }
+    const ancestors = node._util.ancestors;
+    const nodeArray = [...ancestors, node];
+    const nameList = new Set<string>();
+    outer: for (const ancestor of nodeArray) {
+      if(ancestor.type === "ExportDefaultDeclaration"){
+        const { declaration } = ancestor as unknown as AstNode & { declaration: null|AstNode };
+        if(declaration){
+          nameList.add("default");
+          break outer;
+        }
+      }
+      if(ancestor.type === "ExportNamedDeclaration"){
+        const declarationType = (ancestor as any).declaration?.type;
+        if(this.EXPORT_DECLARATION_TYPES.includes(declarationType)){
+          const nameToAdd = (ancestor as any).declaration.id.name;
+          if(nameToAdd){
+            nameList.add(nameToAdd);
+          }
+          break outer;
+        }
+        else if(["VariableDeclaration"].includes(declarationType)){
+          this.findIdOfVariable((ancestor as any).declaration, identifier => {
+            nameList.add(identifier.name as string);
+          });
+          break outer;
+        }
+        else if(declarationType){
+          console.log("未处理的 declarationType :", declarationType)
+        }
+
+        const specifiers = (ancestor as any).specifiers;
+        if(Array.isArray(specifiers)){
+          for (const specifier of specifiers) {
+            if(specifier.type === "ExportSpecifier" || specifier.type === "ExportNamespaceSpecifier"){
+              nameList.add((specifier as any).exported.name);
+            }
+          }
+        }
+        break outer;
+      }
+      if(["FunctionDeclaration", "ClassDeclaration"].includes(ancestor.type) && "Program" === ancestor._util.parent?.type){
+        const ancestorId = (ancestor as any).id;
+        if(ancestorId){
+          const nameToAdd = this.findRelatedExportNameOfDeclarationIdentifier(ancestorId);
+          if(nameToAdd){
+            nameList.add(nameToAdd);
+          }
+        }
+        break outer;
+      }
+      if(["VariableDeclarator"].includes(ancestor.type)){
+        const id = (ancestor as any).id;
+        const varIdentifierSet = new Set<AstNode>();
+        this._deepFindIdentifier(id, identifier => {
+          varIdentifierSet.add(identifier);
+        });
+        for (const identifier of varIdentifierSet) {
+          const nameToAdd = this.findRelatedExportNameOfDeclarationIdentifier(identifier);
+          if(nameToAdd){
+            nameList.add(nameToAdd);
+          }
+        }
+        break outer;
+      }
+    }
+    return Array.from(nameList);
+  }
+
   private static updateImportedAndExportedMember(node: AstNode, programNode: AstNode){
     const { type, source, declaration, specifiers, _util } = node as AstNode & { source: { value: string }, declaration?: null|(AstNode & { declarations: AstNode[] }), specifiers: (AstNode & { local?: { type: string, name: string}, exported: { type: string, name: string } })[] };
     const { filePath } = _util;
@@ -245,10 +334,19 @@ export default class AstUtil {
           });
           return;
         }
-        target.members.push( {
-          localName: local.name as string,
-          importedName: (imported?.name || "default") as string,
-        });
+        if(specifier.type === "ImportDefaultSpecifier"){
+          target.members.push({
+            localName: local.name as string,
+            importedName: "default",
+          });
+          return;
+        }
+        if(specifier.type === "ImportSpecifier"){
+          target.members.push({
+            localName: local.name as string,
+            importedName: imported!.name as string,
+          });
+        }
       });
     }
     if(type === "ExportAllDeclaration"){
@@ -258,17 +356,27 @@ export default class AstUtil {
       }
     }
     if(type === "ExportNamedDeclaration"){
-      specifiers.forEach(specifier => {
+      Array.isArray(specifiers) && specifiers.forEach(specifier => {
         const { local, exported } = specifier as unknown as { local: AstNode, exported: AstNode };
         let target = exportedMember.find(v => v.sourcePath === sourceValue);
         if(!target){
           target = { sourcePath: sourceValue, members: [], ExportAllDeclaration: false };
           exportedMember.push(target);
         }
-        target.members.push({
-          localName: (local?.name || "") as string,
-          exportedName: exported.name as string,
-        });
+        if(specifier.type === "ExportNamespaceSpecifier"){
+          target.members.push({
+            localName: "*",
+            exportedName: exported.name as string,
+          });
+          return;
+        }
+        if(specifier.type === "ExportSpecifier"){
+          target.members.push({
+            localName: local.name as string,
+            exportedName: exported.name as string,
+          });
+          return;
+        }
       });
       if(Array.isArray(declaration?.declarations)){
         declaration?.declarations.forEach(dec => {
@@ -277,12 +385,32 @@ export default class AstUtil {
             target = { sourcePath: sourceValue, members: [], ExportAllDeclaration: false };
             exportedMember.push(target);
           }
-          const idName = (dec as any).id?.name;
+          try{
+            const idName = (dec as any).id?.name;
+            target.members.push({
+              localName: idName as string,
+              exportedName: idName as string,
+            });
+          } catch(e: any){
+            console.log("declaration?.declarations.forEach", e.message);
+          }
+        });
+      }
+      else if(this.EXPORT_DECLARATION_TYPES.includes(declaration?.type as any)){
+        let target = exportedMember.find(v => v.sourcePath === filePath);
+        if(!target){
+          target = { sourcePath: filePath, members: [], ExportAllDeclaration: false };
+          exportedMember.push(target);
+        }
+        try{
+          const idName = (declaration as any).id?.name;
           target.members.push({
             localName: idName as string,
             exportedName: idName as string,
           });
-        });
+        } catch(e: any) {
+          console.log("declaration " + e.message)
+        }
       }
     }
     if(type === "ExportDefaultDeclaration"){
@@ -329,6 +457,7 @@ export default class AstUtil {
           provide.add(exported);
         }
         if(declaration && Array.isArray(declaration.declarations)){
+          // todo 这里需要处理 导出多个变量 或 函数 或 class 的情况
           for (const dec of declaration.declarations) {
             provide.add(dec);
           }
@@ -338,7 +467,7 @@ export default class AstUtil {
   }
 
   private static handleDeclaration(node: AstNode, callback: (inputId: AstNode) => void){
-    if(node.type === "FunctionDeclaration" || node.type === "ClassDeclaration"){
+    if(this.EXPORT_DECLARATION_TYPES.includes(node.type)){
       const id = (node as unknown as { id: AstNode|null }).id;
       if(id){
         callback(id);
@@ -676,11 +805,14 @@ export default class AstUtil {
       callback(node.declaration);
       return;
     }
-    if(node.type === "ExportNamedDeclaration" && Array.isArray(node.specifiers)){
-      for (const specifier of node.specifiers) {
+    if(node.type === "ExportNamedDeclaration"){
+      Array.isArray(node.specifiers) && node.specifiers.forEach((specifier: AstNode) => {
         if(specifier.type === "ExportSpecifier"){
           callback((specifier as unknown as { local: AstNode }).local);
         }
+      });
+      if(node.declaration){
+        this.handleDeclaration((node as any).declaration,callback);
       }
     }
   }
@@ -867,17 +999,25 @@ export default class AstUtil {
     return (node._util.parent!.type === "JSXAttribute" && typeof node.name === "string" && this.standardAttributes.includes(node.name!))
   }
 
-  static getTopScopeNodesByLineNumberRange(mapFileLineToNodeSet: Map<number, Set<AstNode>>, lineNumberStart: number, lineNumberEnd: number){
+  static getTopScopeNodesByLineNumberRange(mapFileLineToNodeSet: Map<number, Set<AstNode>>, lineNumberStart: number, lineNumberEnd: number, loose = false){
     const nodeSet = new Set<AstNode>();
     for (let i = lineNumberStart; i <= lineNumberEnd; i++) {
       const astNode = mapFileLineToNodeSet.get(i);
       if(!astNode){
         continue;
       }
+      let added = false;
       for(const nodeItem of astNode){
         const { startLine, endLine } = nodeItem._util;
         if(startLine >= lineNumberStart && endLine <= lineNumberEnd){
           nodeSet.add(nodeItem);
+          added = true;
+        }
+      }
+      if(!added && loose){
+        const firstNode = [...astNode][0];
+        if(!["File", "Program"].includes(firstNode.type)){
+          nodeSet.add(firstNode);
         }
       }
     }

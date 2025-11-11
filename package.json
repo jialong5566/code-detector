@@ -1,6 +1,6 @@
 {
   "name": "js-code-detector",
-  "version": "0.0.44",
+  "version": "0.0.46",
   "description": "",
   "main": "dist/cjs/index.js",
   "types": "dist/cjs/index.d.ts",
@@ -31,7 +31,8 @@
     "@types/crypto-js": "^4.2.2",
     "@types/lodash": "^4.17.20",
     "@types/madge": "^5.0.3",
-    "father": "^4.6.3"
+    "father": "^4.6.3",
+    "tsx": "^4.20.6"
   },
   "dependencies": {
     "@babel/parser": "^7.28.3",
