@@ -6,6 +6,7 @@ import {readSrcFiles} from "./util/shared/readDirFiles";
 import Core from "./util/ast_util/Core";
 import {parseGitLabCompareUrl} from "./util/parseGitLabDiffUril";
 import {cloneGitRepoAndGetDiff, gitDiffTool} from "./util/shared/gitDiffTool";
+import {DetectService} from "./services/DetectService";
 
 export const gitDiffFileName = "git_diff.txt";
 
@@ -46,3 +47,20 @@ export async function getUpstreamDependenceJson(inputUrl: string, token: string,
 }
 
 export { isRepoTypeSupported } from "./util/shared/getRepoSupportFlag";
+
+export async function runDiffDetect(compareUrl?: string, token?: string){
+  const option = {
+    compareUrl,
+    token,
+    gitRepoUrl: '',
+    branchName: ''
+  }
+  if(!compareUrl || !token){
+    const { gitUrl, branchName } = await getGitRepositoryAndBranch();
+    option.gitRepoUrl = gitUrl;
+    option.branchName = branchName;
+  }
+  const service = new DetectService(option);
+  await service.run();
+  return service.projectService?.outputResult;
+}

@@ -566,14 +566,6 @@ export default class AstUtil {
     });
   }
 
-  private static isVarInit(node: AstNode){
-    return node._util.parentProperty === 'init' && node._util.parent?.type === 'VariableDeclarator'
-  }
-
-  static isReturnArgument(node: AstNode){
-    return node._util.parentProperty === 'argument' && node._util.parent?.type === 'ReturnStatement';
-  }
-
   private static collectDependenceIds(node: AstNode){
     const { _util } = node;
     const { dependenceIds, holdingIdNameMap, children, dependenceIdsNoScope } = _util;
@@ -817,10 +809,6 @@ export default class AstUtil {
     }
   }
 
-  private static expressionTypeIsIdentifier(exp: AstNode|null): exp is AstNode & { type: "Identifier" } {
-    return exp?.type === "Identifier";
-  }
-
   static collectExpressionIdentifiersShallow(exp: AstNode|null, callback: (identifier: AstNode) => void){
     if(!exp || exp.type === "ThisExpression"){
       return;
@@ -852,8 +840,6 @@ export default class AstUtil {
     }
   }
 
-
-
   static collectExpressionIdentifiers(exp: AstNode|null, callback: (identifier: AstNode) => void){
     if(!exp || exp.type === "ThisExpression"){
       return;
@@ -884,7 +870,6 @@ export default class AstUtil {
     }
     exp._util.nodeCollection.forEach(ele => this._collectExpressionIdentifiers(ele, callback));
   }
-
 
   private static findIdOfImport(node: AstNode, callback: (identifier: AstNode) => void){
     const specifiers = (node as unknown as { specifiers: AstNode[]}).specifiers;
@@ -1010,7 +995,9 @@ export default class AstUtil {
       for(const nodeItem of astNode){
         const { startLine, endLine } = nodeItem._util;
         if(startLine >= lineNumberStart && endLine <= lineNumberEnd){
-          nodeSet.add(nodeItem);
+          if(!["File", "Program"].includes(nodeItem.type)){
+            nodeSet.add(nodeItem);
+          }
           added = true;
         }
       }
@@ -1023,30 +1010,5 @@ export default class AstUtil {
     }
     const collections = [...nodeSet].map(e => e._util.nodeCollection).flat();
     return [...nodeSet].filter(e => !collections.includes(e));
-  }
-
-  static getTopScopeNodesByLineNumber(mapFileLineToNodeSet: Map<number, Set<AstNode>>, lineNumber: number){
-    const astNode = mapFileLineToNodeSet.get(lineNumber);
-    const lineOfNodes = [...new Set(astNode)].filter((e: AstNode) => {
-      const { startLine, endLine } = e._util;
-      return startLine === lineNumber && endLine === lineNumber;
-    });
-    const collections = [...lineOfNodes].map(e => e._util.nodeCollection).flat();
-
-    return lineOfNodes.filter(e => !collections.includes(e));
-  }
-
-  static isSubNodeOfVariableDeclarator(node: AstNode){
-    const { ancestors } = node._util;
-    const typeList = ancestors.map(e => e.type);
-    const index = typeList.lastIndexOf("VariableDeclarator");
-    if(index === -1){
-      return false;
-    }
-    return ancestors.slice(index).every(ancestor => ["Identifier", "ObjectPattern", "ArrayPattern"].includes(ancestor.type));
-  }
-
-  static createScopeContent(node: AstNode){
-    return [node._util.filePath,":", node._util.startLine, "-", node._util.endLine, ":[", node.name || (node as any).value,"]"].join("")
   }
 };

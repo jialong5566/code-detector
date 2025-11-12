@@ -118,7 +118,11 @@ export default class FileUtil {
     const existFlag = fs.existsSync(filePath);
     if(existFlag){
       const fileContent = fs.readFileSync(filePath, 'utf8');
-      return this.parseFile(filePath, fileContent)[1];
+      const [_, ast] = this.parseFile(filePath, fileContent);
+      if(ast){
+        ast.__fileContent = fileContent;
+      }
+      return ast;
     }
     console.warn("文件不存在: " + filePath);
     return null;

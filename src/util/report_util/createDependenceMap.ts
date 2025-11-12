@@ -1,10 +1,13 @@
 import getAstKitByFilePath from "../ast_util/getAstKitByFilePath";
 import {resolveImportPath} from "../ast_util/filePathResolver";
 import { performance } from "perf_hooks";
+import {join} from "path";
 
 
 export function createExportedNameToReferenceLocalSet(upstreamFileFullPaths: string[], parsedAlias: Record<string, string>, absPathPrefix: string, projectFilePaths: string[]) {
-  const localAlias = Object.fromEntries(Object.entries(parsedAlias).map(([k, v]) => [k, v.startsWith(absPathPrefix) ? v.replace(absPathPrefix, "") : v] ));
+  const cwd = process.cwd();
+  const systemAbsPathPrefix = absPathPrefix.startsWith(cwd) ? absPathPrefix : join(cwd, absPathPrefix);
+  const localAlias = Object.fromEntries(Object.entries(parsedAlias).map(([k, v]) => [k, v.startsWith(systemAbsPathPrefix) ? v.replace(systemAbsPathPrefix, "") : v] ));
   const import2export: Record<string, string> = {};
   const export2export: Record<string, string> = {};
   const mapFilePathToExportAllSources: Record<string, string[]> = {};

@@ -1,0 +1,142 @@
+import {join} from "path";
+import to from "await-to-js";
+import {execa, logger} from "@umijs/utils";
+import {getGitRepoUrlByToken, parseGitLabCompareUrl} from "../util/parseGitLabDiffUril";
+import createRandomStr from "../util/createRandomStr";
+import {SOURCE, TARGET} from "../util/constants";
+import {cloneRepoWithBranchAndDefault, execGitDiff} from "../util/shared/gitUtil";
+import {getRepoType, isRepoTypeSupported} from "../util/shared/getRepoSupportFlag";
+import {ProjectService} from "./ProjectService";
+import UmiProjectService from "./projectServiceClass/UmiProjectService";
+import { performance } from "perf_hooks";
+
+export class DetectService {
+  directoryInfo: {
+    tmpWorkDir: string;
+    sourceBranchDir: string;
+    targetBranchDir: string;
+  } = {
+    tmpWorkDir: '',
+    sourceBranchDir: '',
+    targetBranchDir: ''
+  };
+  gitInfo: {
+    token: string;
+    repoType: string;
+  } & ReturnType<typeof parseGitLabCompareUrl> = {
+    token: '',
+    gitRepoUrl: '',
+    baseBranch: '',
+    targetBranch: '',
+    projectPathPart: '',
+    repoType: ''
+  };
+
+  projectService: ProjectService|null = null;
+  constructor(option: { compareUrl?: string, gitRepoUrl?: string, token?: string, branchName?: string }) {
+    this.init(option);
+  }
+  async init(option: { compareUrl?: string, gitRepoUrl?: string, token?: string, branchName?: string }) {
+    const { compareUrl, token, gitRepoUrl, branchName } = option;
+    const tmpWorkDir = createRandomStr();
+    this.directoryInfo = {
+      tmpWorkDir,
+      sourceBranchDir: join(tmpWorkDir, SOURCE),
+      targetBranchDir: join(tmpWorkDir, TARGET),
+    };
+    if(compareUrl){
+      this.gitInfo = {
+        ...this.gitInfo,
+        ...parseGitLabCompareUrl(compareUrl),
+        repoType: ''
+      }
+    }
+    if(gitRepoUrl){
+      this.gitInfo = {
+        ...this.gitInfo,
+        baseBranch: 'master',
+        targetBranch: branchName || 'master',
+        gitRepoUrl,
+        token: token || '',
+        repoType: ''
+      }
+    }
+  }
+
+  async run(){
+    await this.clean();
+    try {
+      performance.mark('mkdir');
+      await this.mkdir();
+      performance.mark('clone');
+      {
+        const duration = performance.measure('mkdir', 'mkdir', 'clone').duration;
+        logger.info(`mkdir 耗时: ${duration}ms`);
+      }
+      await this.clone();
+      performance.mark('projectHandle');
+      {
+        const duration = performance.measure('clone', 'clone', 'projectHandle').duration;
+        logger.info(`clone 耗时: ${duration}ms`);
+      }
+      await this.projectHandle();
+      {
+        const duration = performance.measure('projectHandle', 'projectHandle').duration;
+        logger.info(`项目处理耗时: ${duration}ms`);
+      }
+    } catch (e: any) {
+      logger.error("失败:" + e.message);
+    }
+    finally {
+      this.clean();
+    }
+  }
+  async clean(){
+    const dirPath = this.directoryInfo.tmpWorkDir;
+    if (!dirPath) return;
+    const [err] = await to(execa.execa(`rm -rf ${dirPath}`, {shell: true}));
+    if (err) {
+      logger.error("临时目录删除失败");
+    }
+  }
+  async mkdir(){
+    const dirPath = this.directoryInfo.tmpWorkDir;
+    await execa.execa(`mkdir -p ${dirPath}`, {shell: true});
+  }
+
+  async clone(){
+    logger.info("开始克隆仓库");
+    const { tmpWorkDir } = this.directoryInfo;
+    const {gitRepoUrl, token, baseBranch, targetBranch} = this.gitInfo;
+    const repoUrl = token ? getGitRepoUrlByToken(gitRepoUrl, token || '') : gitRepoUrl;
+    const branchesAndTargetDirPaths = [
+      {
+        branch: baseBranch,
+        targetDirPath: join(tmpWorkDir, SOURCE),
+      },
+      {
+        branch: targetBranch,
+        targetDirPath: join(tmpWorkDir, TARGET),
+      }
+    ];
+    await Promise.all(branchesAndTargetDirPaths.map(({ branch, targetDirPath }) => {
+      return cloneRepoWithBranchAndDefault(repoUrl, branch, targetDirPath);
+    }));
+    const targetDirPath = join(tmpWorkDir, TARGET);
+    await execGitDiff(targetDirPath, baseBranch, targetBranch);
+    const repoType = await getRepoType(join(targetDirPath, 'package.json'));
+    this.gitInfo.repoType = repoType;
+    logger.info("克隆仓库成功");
+  }
+
+  async projectHandle(){
+    const { repoType } = this.gitInfo;
+    if(!isRepoTypeSupported(repoType)){
+      return;
+    }
+    if(repoType === 'umi'){
+      this.projectService = new UmiProjectService(this);
+    }
+    await this.projectService?.run();
+  }
+};
