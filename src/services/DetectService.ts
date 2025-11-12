@@ -139,4 +139,13 @@ export class DetectService {
     }
     await this.projectService?.run();
   }
+
+  formatResult(){
+    const repoType = this.gitInfo.repoType;
+    const { effectedImportUsage } = this.projectService?.outputResult || { effectedImportUsage: []};
+    return {
+      repoType,
+      effectedImportUsage,
+    }
+  }
 };

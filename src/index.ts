@@ -62,5 +62,5 @@ export async function runDiffDetect(compareUrl?: string, token?: string){
   }
   const service = new DetectService(option);
   await service.run();
-  return service.projectService?.outputResult;
+  return service.formatResult();
 }

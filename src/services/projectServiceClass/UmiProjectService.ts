@@ -51,7 +51,8 @@ export default class UmiProjectService implements ProjectService {
       return acc;
     }, [] as string[]);
     const possibleEffectedFiles = collectUpstreamFiles(madgeResult!, validModifiedFiles);
-    const { import2export, indirectExportMembers } = createExportedNameToReferenceLocalSet(possibleEffectedFiles, parsedAlias, absPathPrefix, projectFileList);
+    const possibleEffectedFilesFullPath = possibleEffectedFiles.map(file => join(absPathPrefix, file));
+    const { import2export, indirectExportMembers } = createExportedNameToReferenceLocalSet(possibleEffectedFilesFullPath, parsedAlias, absPathPrefix, projectFileList);
     const gitDiffDetail = this.gitDiffDetail;
     const validGitDiffDetail = gitDiffDetail.filter(item => possibleEffectedFiles.includes(item.filePath));
     const effectedExportNames = validGitDiffDetail.map(item => {
