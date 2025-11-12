@@ -1,6 +1,6 @@
 {
   "name": "js-code-detector",
-  "version": "0.0.47",
+  "version": "0.0.48",
   "description": "",
   "main": "dist/cjs/index.js",
   "types": "dist/cjs/index.d.ts",

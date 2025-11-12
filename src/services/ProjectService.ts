@@ -11,7 +11,7 @@ export interface ProjectService {
     parsedAlias: Record<string, any>;
   };
   outputResult: {
-    effectedImportUsage: string[]
+    effectedImportUsage: [string, string][]
   }
   run(): void;
 }

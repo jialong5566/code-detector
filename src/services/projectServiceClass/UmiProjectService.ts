@@ -61,10 +61,9 @@ export default class UmiProjectService implements ProjectService {
       return exportedNames.map(name => [filePath, name].join('#'));
     }).flat();
 
-    const effectedImportUsage = [...Object.entries(import2export), ...Object.entries(indirectExportMembers)].reduce((acc, [key, value]) => {
-      effectedExportNames.includes(value) && acc.push(key);
-      return acc;
-    }, [] as string[]);
+    const effectedImportUsage = [...Object.entries(import2export), ...Object.entries(indirectExportMembers)].filter(([_, value]) => {
+      return effectedExportNames.includes(value);
+    });
     this.outputResult.effectedImportUsage = effectedImportUsage;
   }
 }
