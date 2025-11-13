@@ -6,7 +6,7 @@ import {getRepoType, isRepoTypeSupported} from "./getRepoSupportFlag";
 import {join} from "path";
 import {umi4SetUp} from "../project_umi_util/umi4ProjectUtil";
 import {generateGitDiffReport} from "../report_util/generateGitDiffReport";
-import {vueSetUp} from "./vueProjectUtil";
+import {vueSetUp} from "../project_umi_util/vueProjectUtil";
 import {gitDiffFileName} from "../constants";
 import cloneRepoWithBranchAndDefault from "../git_util/cloneRepoWithBranchAndDefault";
 

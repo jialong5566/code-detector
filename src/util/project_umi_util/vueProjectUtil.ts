@@ -1,4 +1,4 @@
-import path, {join} from "path";
+import {join} from "path";
 import { writeFileSync } from "fs";
 import {aliasUtils, execa, logger} from "@umijs/utils";
 import {MadgeFunc} from "../report_util/getMadgeInstance";

@@ -28,7 +28,7 @@ export interface AstNode {
     dependenceIdsNoScope: Set<AstNode>,
     holdingIds: Set<AstNode>,
     holdingIdNameMap: Map<string, Set<AstNode>>,
-    holdingIdType: 'Import'|'Variable'|'Function'|'Class'|'Param'|null,
+    holdingIdType: 'Import'|'Variable'|'Function'|'Class'|'Param'|'Enum'|'Interface'|'TypeAlias'|null,
     inject: Set<AstNode>,
     provide: Set<AstNode>,
     effectIds: Set<AstNode>,
@@ -474,7 +474,7 @@ export default class AstUtil {
   }
 
   private static handleDeclaration(node: AstNode, callback: (inputId: AstNode) => void){
-    if(this.EXPORT_DECLARATION_TYPES.includes(node.type)){
+    if(this.EXPORT_DECLARATION_TYPES.includes(node.type as any)){
       const id = (node as unknown as { id: AstNode|null }).id;
       if(id){
         callback(id);

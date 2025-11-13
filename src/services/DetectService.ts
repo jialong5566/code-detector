@@ -110,7 +110,10 @@ export class DetectService {
     logger.info("开始克隆仓库");
     const { tmpWorkDir } = this.directoryInfo;
     const {gitRepoUrl, token, baseBranch, targetBranch} = this.gitInfo;
+    logger.info(`开始克隆仓库: ${gitRepoUrl}`);
+    logger.info(`token: ${token}`);
     const repoUrl = token ? getGitRepoUrlByToken(gitRepoUrl, token || '') : gitRepoUrl;
+    logger.info(`克隆仓库URL: ${repoUrl}`);
     const branchesAndTargetDirPaths = [
       {
         branch: baseBranch,
