@@ -13,9 +13,6 @@
       "dom",
       "es2023.array"
     ],
-    "paths": {
-      "@/*": ["src/*"]
-    },
     "allowSyntheticDefaultImports": true
   }
 }

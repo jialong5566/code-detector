@@ -5,7 +5,7 @@ import {readSrcFiles} from "./util/shared/readDirFiles";
 import Core from "./util/ast_util/Core";
 import {gitDiffTool} from "./util/shared/gitDiffTool";
 import {DetectService} from "./services/DetectService";
-import getGitRepositoryAndBranch from "@/util/git_util/getGitRepositoryAndBranch";
+import getGitRepositoryAndBranch from "./util/git_util/getGitRepositoryAndBranch";
 
 
 

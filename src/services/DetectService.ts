@@ -9,7 +9,7 @@ import {getRepoType, isRepoTypeSupported} from "../util/shared/getRepoSupportFla
 import {ProjectService} from "./ProjectService";
 import UmiProjectService from "./projectServiceClass/UmiProjectService";
 import { performance } from "perf_hooks";
-import cloneRepoWithBranchAndDefault from "src/util/git_util/cloneRepoWithBranchAndDefault";
+import cloneRepoWithBranchAndDefault from "../util/git_util/cloneRepoWithBranchAndDefault";
 
 export class DetectService {
   directoryInfo: {
