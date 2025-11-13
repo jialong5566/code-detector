@@ -1,14 +1,15 @@
 import {join} from "path";
 import to from "await-to-js";
 import {execa, logger} from "@umijs/utils";
-import {getGitRepoUrlByToken, parseGitLabCompareUrl} from "../util/parseGitLabDiffUril";
-import createRandomStr from "../util/createRandomStr";
+import {getGitRepoUrlByToken, parseGitLabCompareUrl} from "../util/git_util/parseGitLabDiffUril";
+import createRandomStr from "../util/shared/createRandomStr";
 import {SOURCE, TARGET} from "../util/constants";
-import {cloneRepoWithBranchAndDefault, execGitDiff} from "../util/shared/gitUtil";
+import execGitDiff from "../util/git_util/execGitDiff";
 import {getRepoType, isRepoTypeSupported} from "../util/shared/getRepoSupportFlag";
 import {ProjectService} from "./ProjectService";
 import UmiProjectService from "./projectServiceClass/UmiProjectService";
 import { performance } from "perf_hooks";
+import cloneRepoWithBranchAndDefault from "src/util/git_util/cloneRepoWithBranchAndDefault";
 
 export class DetectService {
   directoryInfo: {
@@ -37,7 +38,7 @@ export class DetectService {
     this.init(option);
   }
   async init(option: { compareUrl?: string, gitRepoUrl?: string, token?: string, branchName?: string }) {
-    const { compareUrl, token, gitRepoUrl, branchName } = option;
+    const { compareUrl, token = '', gitRepoUrl, branchName } = option;
     const tmpWorkDir = createRandomStr();
     this.directoryInfo = {
       tmpWorkDir,
@@ -48,6 +49,7 @@ export class DetectService {
       this.gitInfo = {
         ...this.gitInfo,
         ...parseGitLabCompareUrl(compareUrl),
+        token,
         repoType: ''
       }
     }

@@ -1,5 +1,6 @@
 import { windowProperties } from "./windowProperties";
 import { intrinsicElements, standardAttributes } from "./intrinsicElements";
+import {EXPORT_DECLARATION_TYPES, INVALID_NODE_KEY} from "./SHARED_CONSTANTS";
 export interface AstNode {
   computed?: boolean;
   type: string;
@@ -38,12 +39,18 @@ export interface AstNode {
 }
 
 export default class AstUtil {
-  static invalidNodeKey = [
-    "comments",
-    "tokens",
-  ];
+  static invalidNodeKey = INVALID_NODE_KEY;
+  static EXPORT_DECLARATION_TYPES = EXPORT_DECLARATION_TYPES;
+  static windowProperties = windowProperties
+  static intrinsicElements = intrinsicElements
+  static standardAttributes = standardAttributes
+  private static isValidNodeCollect(astNode: AstNode): astNode is AstNode {
+    return typeof astNode?.type === 'string';
+  }
 
-  static EXPORT_DECLARATION_TYPES = ["FunctionDeclaration", "TSEnumDeclaration", "TSInterfaceDeclaration", "TSTypeAliasDeclaration", "ClassDeclaration"];
+  private static isValidArrayNodeCollect(astNode: any): astNode is AstNode[] {
+    return Array.isArray(astNode) && astNode.some(v => typeof v?.type === 'string')
+  }
 
   static getNodePath(node: AstNode){
     return [...node._util.ancestors, node].map(n => n.type).join(':') + ":" + node.name;
@@ -956,18 +963,6 @@ export default class AstUtil {
       });
     }
   }
-
-  private static isValidArrayNodeCollect(astNode: any): astNode is AstNode[] {
-    return Array.isArray(astNode) && astNode.some(v => typeof v?.type === 'string')
-  }
-
-  private static isValidNodeCollect(astNode: AstNode): astNode is AstNode {
-    return typeof astNode?.type === 'string';
-  }
-
-  static windowProperties = windowProperties
-  static intrinsicElements = intrinsicElements
-  static standardAttributes = standardAttributes
 
   static isUntrackedId(id: AstNode){
     return id._util.variableScope.length === 0 && !this.isPropertyOfGlobal(id) && !this.isIntrinsicElement(id) && !this.isStandardAttribute(id)

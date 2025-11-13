@@ -1,7 +1,6 @@
 import getAstKitByFilePath from "../ast_util/getAstKitByFilePath";
-import {resolveImportPath} from "../ast_util/filePathResolver";
-import { performance } from "perf_hooks";
 import {join} from "path";
+import resolveImportPath from "./resolveImportPath";
 
 
 export function createExportedNameToReferenceLocalSet(upstreamFileFullPaths: string[], parsedAlias: Record<string, string>, absPathPrefix: string, projectFilePaths: string[]) {

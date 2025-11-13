@@ -1,26 +1,11 @@
 import {join} from "path";
 import {writeFileSync} from "fs";
-import {execa, chalk} from "@umijs/utils";
 import dayjs from "dayjs";
 import {readSrcFiles} from "./util/shared/readDirFiles";
 import Core from "./util/ast_util/Core";
-import {parseGitLabCompareUrl} from "./util/parseGitLabDiffUril";
-import {cloneGitRepoAndGetDiff, gitDiffTool} from "./util/shared/gitDiffTool";
+import {gitDiffTool} from "./util/shared/gitDiffTool";
 import {DetectService} from "./services/DetectService";
-
-export const gitDiffFileName = "git_diff.txt";
-
-
-export async function getGitRepositoryAndBranch(){
-  const res = await execa.execa('git remote get-url origin', {shell: true});
-  chalk.green(["仓库地址：", res.stdout]);
-  const branch = await execa.execa('git rev-parse --abbrev-ref HEAD', {shell: true});
-  chalk.green(["分支名称：", branch.stdout]);
-  return {
-    gitUrl: res.stdout,
-    branchName: branch.stdout
-  }
-}
+import getGitRepositoryAndBranch from "./util/git_util/getGitRepositoryAndBranch";
 
 
 
@@ -39,11 +24,6 @@ export async function gitDiffDetect() {
   const { gitUrl, branchName } = await getGitRepositoryAndBranch();
   const today = dayjs().format('YYYYMDD_HHmmss');
   return gitDiffTool({ gitRepoUrl: gitUrl, targetBranch: branchName, baseBranch: 'master', tempDirPath: today, generateFile: undefined });
-}
-
-export async function getUpstreamDependenceJson(inputUrl: string, token: string, jsonKeys?: (keyof Awaited<ReturnType<typeof cloneGitRepoAndGetDiff>>)[]){
-  const gitInfo = parseGitLabCompareUrl(inputUrl);
-  return cloneGitRepoAndGetDiff(gitInfo.gitRepoUrl, gitInfo.targetBranch, { token, jsonKeys });
 }
 
 export { isRepoTypeSupported } from "./util/shared/getRepoSupportFlag";

@@ -1,13 +1,12 @@
 import {readFileSync, writeFileSync} from "fs";
 import { join, } from "path";
-import {gitDiffFileName} from "../../index";
+import {gitDiffFileName} from "../constants";
 import {formatGitDiffContent} from "../format_git_diff_content";
 import {logger,  winPath} from "@umijs/utils";
 import {createDetectReport} from "../report_util";
 import { IMadgeInstance} from "./getMadgeInstance";
 import { createExportedNameToReferenceLocalSet} from "./createDependenceMap";
 import dayjs from "dayjs";
-import { performance } from "perf_hooks"
 import collectUpstreamFiles from "../shared/collectUpstreamFiles";
 import filterEffectedCode from "./filterEffectedCode";
 

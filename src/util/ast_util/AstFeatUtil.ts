@@ -4,6 +4,7 @@ import base64 from "crypto-js/enc-base64";
 import { Comment, Node, Identifier} from "@babel/types";
 import { AST_NODE_FEATURE_LEVEL } from "../shared/featureLevel";
 import {astNodeFeatureExtractorMap} from "../shared/astNodeFeatureExtractorMap";
+import {INVALID_NODE_KEY} from "./SHARED_CONSTANTS";
 
 export type MapHashKeyToAstNodeSet = Map<string, Set<AstFeatNode>>;
 export interface AstFeatNode {
@@ -34,10 +35,7 @@ export interface AstFeatNode {
 
 export default class AstFeatUtil {
   static skipHashCreateTypes = ["Program", "File", "ExportDeclaration"];
-  static invalidNodeKey = [
-    "comments",
-    "tokens",
-  ];
+  static invalidNodeKey = INVALID_NODE_KEY;
   // 忽略的 节点类型
   static AstNodeTypeConf = new Map([
     ["ImportDeclaration", {

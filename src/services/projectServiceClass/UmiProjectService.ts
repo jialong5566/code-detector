@@ -1,13 +1,13 @@
 import {formatGitDiffContent, GitDiffDetail} from "../../util/format_git_diff_content";
 import {DetectService} from "../DetectService";
-import {umi4SetUp} from "../../util/shared/umi4ProjectUtil";
+import {umi4SetUp} from "../../util/project_umi_util/umi4ProjectUtil";
 import {readFileSync} from "fs";
 import {join} from "path";
-import {gitDiffFileName} from "../../index";
 import collectUpstreamFiles from "../../util/shared/collectUpstreamFiles";
 import {createExportedNameToReferenceLocalSet} from "../../util/report_util/createDependenceMap";
 import filterEffectedExportMember from "../../util/report_util/filterEffectedExportMember";
 import {ProjectService} from "../ProjectService";
+import {gitDiffFileName} from "../../util/constants";
 
 export default class UmiProjectService implements ProjectService {
   gitDiffDetail: GitDiffDetail[] = [];
