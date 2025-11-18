@@ -3,9 +3,22 @@ import { AstUtil } from "../../../../src/util/ast_util/AstKit";
 import {AstNode} from "../../../../src/util/ast_util/AstUtil";
 
 const fileContent = `
+import React, { useRef as Ref } from "./react";
+import  * as All from "react";
+export function fnExport(){}
+export default function(){}
 function fn(){
 }
 class cls{}
+export class clsExport{}
+export enum EnumDecExport {
+    NONE = 'NONE',
+    SQL = 'SQL',
+    INPUT = 'INPUT',
+    QUERY = 'QUERY',
+    LIST = 'LIST',
+    MEMBER = 'MEMBER',
+}
 enum EnumDec {
     NONE = 'NONE',
     SQL = 'SQL',
@@ -14,14 +27,18 @@ enum EnumDec {
     LIST = 'LIST',
     MEMBER = 'MEMBER',
 }
+export interface ItfExport {
+  A: V
+}
 interface Itf {
   A: V
 }
+export type TpExport = {};
+
 type Tp = {};
-export function fnExport(){}
-export default function(){}
-export class clsExport{}
+
 const mutA = 1;
+export { mutA as mutB };
 const mutB = 2;
 `;
 
@@ -36,6 +53,6 @@ if(astNode){
   const programNode = (astNode as any)?.program;
   const names = [...programNode._util.holdingIds].map((e: any) => e.name);
   test('collect variable names:', () => {
-    expect(names).toEqual(['fn', 'cls', 'EnumDec', 'Itf', 'Tp', 'fnExport', 'clsExport','mutA','mutB']);
+    expect(names.sort()).toEqual(['React', 'Ref','All','fn','fnExport', 'cls',  'clsExport','EnumDec', 'EnumDecExport', 'Itf', 'ItfExport', 'Tp', 'TpExport', 'mutA','mutB'].sort());
   });
 }

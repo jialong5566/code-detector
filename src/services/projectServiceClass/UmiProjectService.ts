@@ -8,16 +8,21 @@ import {createExportedNameToReferenceLocalSet} from "../../util/report_util/crea
 import filterEffectedExportMember from "../../util/report_util/filterEffectedExportMember";
 import {ProjectService} from "../ProjectService";
 import {gitDiffFileName} from "../../util/constants";
+import {IMadgeInstance} from "../../util/report_util/getMadgeInstance";
 
 export default class UmiProjectService implements ProjectService {
   gitDiffDetail: GitDiffDetail[] = [];
   helpInfo: ProjectService['helpInfo'] = {
     projectFileList: [],
-    madgeResult: null,
     parsedAlias: {},
   };
   outputResult: ProjectService['outputResult'] = {
     effectedImportUsage: [],
+    error: null,
+  };
+
+  umiHelpInfo = {
+    madgeResult: null as IMadgeInstance|null,
   };
 
   constructor(public detectService: DetectService) {
@@ -29,7 +34,7 @@ export default class UmiProjectService implements ProjectService {
     const targetDirPath = this.detectService.directoryInfo.targetBranchDir;
     const { madgeResult, parsedAlias } = await umi4SetUp({ targetDirPath, invokeType: 'remote' });
     this.helpInfo.projectFileList = Object.keys(madgeResult.tree);
-    this.helpInfo.madgeResult = madgeResult;
+    this.umiHelpInfo.madgeResult = madgeResult;
     this.helpInfo.parsedAlias = parsedAlias;
     await this.parseGitDiffContent();
     await this.collectEffectedFiles();
@@ -41,7 +46,8 @@ export default class UmiProjectService implements ProjectService {
   }
 
   async collectEffectedFiles() {
-    const { madgeResult, parsedAlias } = this.helpInfo;
+    const { parsedAlias } = this.helpInfo;
+    const { madgeResult } = this.umiHelpInfo;
     const projectFileList = this.helpInfo.projectFileList;
     const targetBranchDir = this.detectService.directoryInfo.targetBranchDir;
     const absPathPrefix = join(targetBranchDir, '/');

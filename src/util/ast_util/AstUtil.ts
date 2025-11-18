@@ -185,7 +185,9 @@ export default class AstUtil {
     });
     try {
       children.forEach(child => child._util.parent = node);
-      nodeCollection.forEach(nodeItem => nodeItem._util.ancestors.unshift(node));
+      nodeCollection.forEach(nodeItem => {
+        !nodeItem._util.ancestors.includes(node) && nodeItem._util.ancestors.unshift(node);
+      });
     }
     catch(e: any){
       console.error('parent ancestors update',e.message);
@@ -223,7 +225,7 @@ export default class AstUtil {
         (node as unknown as  { body: AstNode[] }).body.forEach(child => this.updateImportedAndExportedMember(child, node));
       }
       catch(e: any){
-        console.error('updateImportedAndExportedMember',e.message);
+        console.error('收集导入、导出成员 报错',e.message);
       }
     }
     try {
@@ -257,6 +259,10 @@ export default class AstUtil {
     const nodeArray = [...ancestors, node];
     const nameList = new Set<string>();
     outer: for (const ancestor of nodeArray) {
+      if(ancestor.type === "VElement"){
+        nameList.add("default");
+        break outer;
+      }
       if(ancestor.type === "ExportDefaultDeclaration"){
         const { declaration } = ancestor as unknown as AstNode & { declaration: null|AstNode };
         if(declaration){
@@ -945,7 +951,7 @@ export default class AstUtil {
     _util.endLine = Math.max(...nodeCollection.map(n => n.loc?.end?.line!), astNode.loc?.end.line!);
     _util.startColumn = astNode.loc?.start.column ?? Math.min(...nodeCollection.map(n => n.loc?.start?.column!), astNode.loc?.start.column!);
     _util.endColumn = astNode.loc?.end.column ?? Math.max(...nodeCollection.map(n => n.loc?.end?.column!), astNode.loc?.end.column!);
-    _util.uuid = `${filePath}:${type}:${name}「${_util.startLine}:${_util.startColumn},${_util.endLine}:${_util.endColumn}」`;
+    _util.uuid = `${filePath}@${type}:${name}「${_util.startLine}:${_util.startColumn},${_util.endLine}:${_util.endColumn}」`;
     mapUuidToNode.set(_util.uuid, astNode);
 
     for (let i = _util.startLine; i <= _util.endLine; i++) {

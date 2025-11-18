@@ -6,5 +6,9 @@ export default function filterEffectedExportMember(filePath: string, absPathPref
   const { mapFileLineToNodeSet } = astKit;
   const topScopeNodes = AstUtil.getTopScopeNodesByLineNumberRange(mapFileLineToNodeSet, startLine, endLine);
   const exportMembers = topScopeNodes.map(node => AstUtil.findExportedMembersNameFromAncestors(node)).flat();
-  return [...new Set(exportMembers)];
+  const res = [...new Set(exportMembers)];
+  if(res.length === 0 && filePath.endsWith('.vue')){
+    res.push('default');
+  }
+  return res;
 }

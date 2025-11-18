@@ -2,7 +2,7 @@ import {readFileSync, existsSync} from "fs";
 import {logger} from "@umijs/utils";
 
 export function isRepoTypeSupported(repoType: string){
-  return ['umi'].includes(repoType);
+  return ['umi', 'vue2'].includes(repoType);
 }
 
 export function getRepoType(jsonPath:string){

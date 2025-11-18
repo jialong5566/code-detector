@@ -29,6 +29,35 @@ export class AstUtil {
     ].map((e: any[]) => e.filter(Boolean).join(":")).filter(Boolean).join(' ');
     return `${msg}「${startLine}:${startColumn}, ${endLine}:${endColumn}」`;
   }
+
+  static getTopScopeNodesByLineNumberRange(mapFileLineToNodeSet: Map<number, Set<AstNode>>, lineNumberStart: number, lineNumberEnd: number, loose = false){
+    const nodeSet = new Set<AstNode>();
+    for (let i = lineNumberStart; i <= lineNumberEnd; i++) {
+      const astNode = mapFileLineToNodeSet.get(i);
+      if(!astNode){
+        continue;
+      }
+      let added = false;
+      for(const nodeItem of astNode){
+        const { startLine, endLine } = nodeItem._util;
+        if(startLine >= lineNumberStart && endLine <= lineNumberEnd){
+          if(!["File", "Program"].includes(nodeItem.type)){
+            nodeSet.add(nodeItem);
+          }
+          added = true;
+        }
+      }
+      if(!added && loose){
+        const firstNode = [...astNode][0];
+        if(!["File", "Program"].includes(firstNode.type)){
+          nodeSet.add(firstNode);
+        }
+      }
+    }
+    const collections = [...nodeSet].map(e => e._util.nodeCollection).flat();
+    return [...nodeSet].filter(e => !collections.includes(e));
+  }
+
   private static isValidNodeCollect(astNode: AstNode): astNode is AstNode {
     return typeof astNode?.type === 'string';
   }
@@ -40,9 +69,120 @@ export class AstUtil {
     // todo
   }
 
-  private static updateImportedAndExportedMember(programBodyChild: AstNode, programNode: AstNode){
-    // todo
-    if(programNode.type !== "Program") return;
+  private static findOrCreateImportedMember(importedMember: AstNode['_util']['importedMember'],sourceValue: string){
+    let target = importedMember.find(v => v.sourcePath === sourceValue);
+    if(!target){
+      target = { sourcePath: sourceValue, members: [] };
+      importedMember.push(target);
+    }
+    return target;
+  };
+
+  private static findOrCreateExportedMember(exportedMember: AstNode['_util']['exportedMember'],sourceValue: string){
+    let target = exportedMember.find(v => v.sourcePath === sourceValue);
+    if(!target){
+      target = { sourcePath: sourceValue, members: [], ExportAllDeclaration: false };
+      exportedMember.push(target);
+    }
+    return target;
+  };
+
+  private static updateImportedAndExportedMember(node: AstNode, programNode: AstNode){
+    const { type, source, declaration, specifiers, _util } = node as AstNode & { source: { value: string }, declaration?: null|(AstNode & { declarations: AstNode[] }), specifiers: (AstNode & { local?: { type: string, name: string}, exported: { type: string, name: string } })[] };
+    const { filePath } = _util;
+    const sourceValue = source?.value || filePath;
+    const { importedMember, exportedMember } = programNode._util;
+    if(type === "ImportDeclaration"){
+      specifiers.forEach(specifier => {
+        const { local, imported } = specifier as unknown as AstNode & { local: AstNode, imported?: AstNode };
+        const target = this.findOrCreateImportedMember(importedMember, sourceValue);
+        if(specifier.type === "ImportNamespaceSpecifier"){
+          target.members.push({
+            localName: local.name as string,
+            importedName: "*",
+          });
+          return;
+        }
+        if(specifier.type === "ImportDefaultSpecifier"){
+          target.members.push({
+            localName: local.name as string,
+            importedName: "default",
+          });
+          return;
+        }
+        if(specifier.type === "ImportSpecifier"){
+          target.members.push({
+            localName: local.name as string,
+            importedName: imported!.name as string,
+          });
+        }
+      });
+    }
+    if(type === "ExportAllDeclaration"){
+      const target = exportedMember.find(v => v.sourcePath === sourceValue);
+      if(!target){
+        exportedMember.push({ sourcePath: sourceValue, members: [], ExportAllDeclaration: true });
+      }
+    }
+    if(type === "ExportNamedDeclaration"){
+      Array.isArray(specifiers) && specifiers.forEach(specifier => {
+        const { local, exported } = specifier as unknown as { local: AstNode, exported: AstNode };
+        const target = this.findOrCreateExportedMember(exportedMember,  sourceValue);
+        if(specifier.type === "ExportNamespaceSpecifier"){
+          target.members.push({
+            localName: "*",
+            exportedName: exported.name as string,
+          });
+          return;
+        }
+        if(specifier.type === "ExportSpecifier"){
+          target.members.push({
+            localName: local.name as string,
+            exportedName: exported.name as string,
+          });
+          return;
+        }
+      });
+      if(Array.isArray(declaration?.declarations)){
+        declaration?.declarations.forEach(dec => {
+          const target = this.findOrCreateExportedMember(exportedMember,  sourceValue);
+          this.collectVariableDeclarationIdentifiers(dec,identifier => {
+            try{
+              const idName = identifier.name;
+              target!.members.push({
+                localName: idName as string,
+                exportedName: idName as string,
+              });
+            } catch(e: any){
+              console.log("declaration?.declarations.forEach", e.message);
+            }
+          });
+        });
+      }
+      else if(this.EXPORT_DECLARATION_TYPES.includes(declaration?.type as any)){
+        const target = this.findOrCreateExportedMember(exportedMember,  sourceValue);
+        try{
+          const idName = (declaration as any).id?.name;
+          target.members.push({
+            localName: idName as string,
+            exportedName: idName as string,
+          });
+        } catch(e: any) {
+          console.log("declaration " + e.message)
+        }
+      }
+    }
+    if(type === "ExportDefaultDeclaration"){
+      let target = exportedMember.find(v => v.sourcePath === filePath);
+      if(!target){
+        target = { sourcePath: filePath, members: [], ExportAllDeclaration: false };
+        exportedMember.push(target);
+      }
+      target.members.push({
+        localName: "default",
+        exportedName: "default",
+      });
+    }
   }
 
 
@@ -78,8 +218,96 @@ export class AstUtil {
     }
   }
 
+  private static collectDependenceIdsOfExportMembers(node: AstNode, callback: (identifier: AstNode) => void){
+    if(node.type === "ExportNamedDeclaration"){
+      const { declaration, specifiers } = (node as unknown as { declaration: AstNode, specifiers: AstNode[] });
+      if(declaration?.type === "Identifier"){
+        callback(declaration);
+      }
+      for (const specifier of specifiers) {
+        const { local } = specifier as unknown as { local: AstNode } ;
+        if(local?.type === "Identifier"){
+          callback(local);
+        }
+      }
+    }
+    if(node.type === "ExportDefaultDeclaration"){
+      const declaration = (node as unknown as { declaration: AstNode }).declaration;
+      if(declaration?.type === "Identifier"){
+        callback(declaration);
+      }
+    }
+  }
+
+  private static collectExpressionIdentifiersShallow(exp: AstNode|null, callback: (identifier: AstNode) => void){
+    if(!exp || exp.type === "ThisExpression"){
+      return;
+    }
+    this._collectExpressionIdentifiersShallow(exp, callback);
+  }
+
+  private static _collectExpressionIdentifiersShallow(exp: AstNode, callback: (identifier: AstNode) => void){
+    if(!exp || exp.type === "ThisExpression" || exp._util.holdingIdType) return;
+    if(exp.type === "Identifier"){
+      if((exp._util.parentProperty === "property" || exp._util.parentProperty === "key") && !exp._util.parent?.computed) return;
+      callback(exp);
+      return;
+    }
+    if(exp.type === "JSXIdentifier" && exp._util.parent?.type !== "JSXAttribute"){
+      callback(exp);
+      return;
+    }
+  }
+
   private static collectDependenceIds(node: AstNode){
-    // todo
+    const { _util } = node;
+    const { dependenceIds, holdingIdNameMap, children, dependenceIdsNoScope, holdingIds } = _util;
+    children.forEach(child => {
+      if(child._util.dependenceIdsNoScope.size > 0){
+        child._util.dependenceIdsNoScope.forEach(id => dependenceIds.add(id));
+      }
+      this.collectDependenceIdsOfExportMembers(child, id => dependenceIds.add(id));
+      this.collectExpressionIdentifiersShallow(child, exp => {
+        if(exp.type === "ThisExpression" || exp._util.holdingIdType || ["imported", "exported"].includes(exp._util.parentProperty)) return;
+        if(exp.type === "Identifier"){
+          if((exp._util.parentProperty === "property" || exp._util.parentProperty === "key") && !exp._util.parent?.computed) return;
+        }
+        if(exp.type === "JSXIdentifier" && exp._util.parent?.type === "JSXAttribute") return;
+        dependenceIds.add(exp);
+      });
+    });
+
+    for (const dependenceId of [...dependenceIds]) {
+      if(!dependenceId._util){
+        continue;
+      }
+      if(holdingIds.has(dependenceId)){
+        dependenceIds.delete(dependenceId);
+        continue;
+      }
+      if(dependenceId._util.variableScope.length === 0 && typeof dependenceId.name === "string" && holdingIdNameMap.has(dependenceId.name)){
+        dependenceId._util.variableScope.push(...holdingIdNameMap.get(dependenceId.name)!);
+        const firstPick = dependenceId._util.variableScope[0];
+        if(firstPick && firstPick._util.uuid !== dependenceId._util.uuid){
+          firstPick._util.occupation.add(dependenceId);
+        }
+      }
+      if(dependenceId._util.variableScope.length === 0){
+        dependenceIdsNoScope.add(dependenceId);
+      }
+    }
+    if(node.type === 'Program'){
+      for (const dependenceId of [...dependenceIdsNoScope]) {
+        if(dependenceId.type === "JSXIdentifier" && this.intrinsicElements.includes(dependenceId.name as string)){
+          dependenceIdsNoScope.delete(dependenceId);
+          dependenceIds.delete(dependenceId);
+        }
+        else if(dependenceId.type === "Identifier" && this.windowProperties.includes(dependenceId.name as string)){
+          dependenceIdsNoScope.delete(dependenceId);
+          dependenceIds.delete(dependenceId);
+        }
+      }
+    }
   }
 
   private static updateLoc(astNode: AstNode, extra: { mapUuidToNode: Map<string, AstNode>, mapFileLineToNodeSet: Map<number, Set<AstNode>>, mapPathToNodeSet: Map<string, Set<AstNode>> }) {
@@ -90,7 +318,7 @@ export class AstUtil {
     _util.endLine = Math.max(...nodeCollection.map(n => n.loc?.end?.line!), astNode.loc?.end.line!);
     _util.startColumn = astNode.loc?.start.column ?? Math.min(...nodeCollection.map(n => n.loc?.start?.column!), astNode.loc?.start.column!);
     _util.endColumn = astNode.loc?.end.column ?? Math.max(...nodeCollection.map(n => n.loc?.end?.column!), astNode.loc?.end.column!);
-    _util.uuid = `${filePath}:${type}:${name}「${_util.startLine}:${_util.startColumn},${_util.endLine}:${_util.endColumn}」`;
+    _util.uuid = `${filePath}@${type}:${name}「${_util.startLine}:${_util.startColumn},${_util.endLine}:${_util.endColumn}」`;
     mapUuidToNode.set(_util.uuid, astNode);
 
     for (let i = _util.startLine; i <= _util.endLine; i++) {
@@ -289,7 +517,9 @@ export class AstUtil {
     });
     try {
       children.forEach(child => child._util.parent = node);
-      nodeCollection.forEach(nodeItem => nodeItem._util.ancestors.unshift(node));
+      nodeCollection.forEach(nodeItem => {
+        !nodeItem._util.ancestors.includes(node) && nodeItem._util.ancestors.unshift(node);
+      });
     }
     catch(e: any){
       console.error('parent ancestors update',e.message);

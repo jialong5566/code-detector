@@ -10,6 +10,7 @@ import {ProjectService} from "./ProjectService";
 import UmiProjectService from "./projectServiceClass/UmiProjectService";
 import { performance } from "perf_hooks";
 import cloneRepoWithBranchAndDefault from "../util/git_util/cloneRepoWithBranchAndDefault";
+import VueProjectService from "./projectServiceClass/VueProjectService";
 
 export class DetectService {
   directoryInfo: {
@@ -76,6 +77,10 @@ export class DetectService {
         logger.info(`mkdir 耗时: ${duration}ms`);
       }
       await this.clone();
+      const token = this.gitInfo.token;
+      if(token){
+        await this.move();
+      }
       performance.mark('projectHandle');
       {
         const duration = performance.measure('clone', 'clone', 'projectHandle').duration;
@@ -134,6 +139,16 @@ export class DetectService {
     logger.info("克隆仓库成功");
   }
 
+  async move(){
+    const repoType = this.gitInfo.repoType;
+    const tmpWorkDir = this.directoryInfo.tmpWorkDir;
+    const newTmpWorkDir = join(repoType, tmpWorkDir);
+    this.directoryInfo.tmpWorkDir = newTmpWorkDir;
+    this.directoryInfo.sourceBranchDir = join(newTmpWorkDir, SOURCE);
+    this.directoryInfo.targetBranchDir = join(newTmpWorkDir, TARGET);
+    await execa.execa(`mv ${tmpWorkDir} ${newTmpWorkDir}`, {shell: true});
+  }
+
   async projectHandle(){
     const { repoType } = this.gitInfo;
     if(!isRepoTypeSupported(repoType)){
@@ -142,13 +157,17 @@ export class DetectService {
     if(repoType === 'umi'){
       this.projectService = new UmiProjectService(this);
     }
+    if(repoType === 'vue2'){
+      this.projectService = new VueProjectService(this);
+    }
     await this.projectService?.run();
   }
 
   formatResult(){
     const repoType = this.gitInfo.repoType;
-    const { effectedImportUsage } = this.projectService?.outputResult || { effectedImportUsage: []};
+    const { effectedImportUsage, error } = this.projectService?.outputResult || { effectedImportUsage: [], error: null };
     return {
+      error,
       repoType,
       effectedImportUsage,
     }
