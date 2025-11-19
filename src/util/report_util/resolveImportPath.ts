@@ -76,7 +76,7 @@ function getDirName(filePath: string) {
  * @param {string[]} [extensions=['.js', '.ts', '.jsx', '.tsx']] - 可能的文件扩展名
  * @returns {Object} 包含全路径和是否为外部路径的对象
  */
-export default function resolveImportPath(alias: Record<string, string>, importPath: string, currentFilePath: string, extensions = ['.js', '.ts', '.jsx', '.tsx']) {
+export default function resolveImportPath(alias: Record<string, string>, importPath: string, currentFilePath: string, extensions = ['.js', '.ts', '.jsx', '.tsx', '.vue']) {
   // 处理相对路径
   if (importPath.startsWith('.')) {
     // 获取当前文件所在的目录

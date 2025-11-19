@@ -10,7 +10,6 @@ import {IMadgeInstance} from "../../util/report_util/getMadgeInstance";
 import collectUpstreamFiles from "../../util/shared/collectUpstreamFiles";
 import {createExportedNameToReferenceLocalSet} from "../../util/report_util/createDependenceMap";
 import filterEffectedExportMember from "../../util/report_util/filterEffectedExportMember";
-import {handleExecaError} from "../../util/shared/handleExecaError";
 import to from "await-to-js";
 
 
@@ -30,6 +29,7 @@ export default class VueProjectService implements ProjectService{
     webpackConfigPath: '',
     webpackConfigTextLines: [] as string[],
     entryFiles: [] as string[],
+    extensions: [] as string[],
   };
 
   constructor(public detectService: DetectService){
@@ -58,7 +58,9 @@ export default class VueProjectService implements ProjectService{
     const targetDirPath = this.detectService.directoryInfo.targetBranchDir;
     this.vueHelpInfo.webpackConfigTextLines = webpackConfigText.split("\n");
     this.getWebpackAlias();
+    this.getWebpackExtensions();
     this.getEntryFiles();
+    logger.info("生成简单的 webpack 配置...");
     const wb = this.createSimpleWebpackConfig();
     writeFileSync(this.vueHelpInfo.webpackConfigPath = join(targetDirPath, 'webpack.config.js'), `module.exports = ${JSON.stringify(wb, null, 2)}`, 'utf-8')
     await this.getMadgeResult();
@@ -66,6 +68,7 @@ export default class VueProjectService implements ProjectService{
 
   async getWebpackConfigText(){
     const targetDirPath = this.detectService.directoryInfo.targetBranchDir;
+    logger.info("执行 npx vue-cli-service inspect");
     let [err, data] = await to(execa.execa(`cd ${targetDirPath} && npx vue-cli-service inspect`, {shell: true}));
     if(err){
       await execa.execa(`cd ${targetDirPath} && yarn`, {shell: true});
@@ -81,7 +84,8 @@ export default class VueProjectService implements ProjectService{
   createSimpleWebpackConfig(){
     return {
       resolve: {
-        alias: this.helpInfo.parsedAlias
+        alias: this.helpInfo.parsedAlias,
+        extensions: this.vueHelpInfo.extensions,
       },
     };
   }
@@ -109,7 +113,29 @@ export default class VueProjectService implements ProjectService{
     this.vueHelpInfo.entryFiles = Object.values({...entryObject}).flat() as string[];
   }
 
+  getWebpackExtensions(){
+    logger.info("获取 webpack extensions...");
+    const lines = this.vueHelpInfo.webpackConfigTextLines;
+    let extensions = "";
+    let extensionsFind = false;
+    for (const line of lines) {
+      if(!extensionsFind && line.trim().startsWith('extensions:')){
+        extensionsFind = true;
+        extensions += line.trim().replace(/^\s*extensions:\s*/, "");
+      }
+      else if(extensionsFind &&line.trim().startsWith("]")){
+        extensions += line.replace(/,/g, "");
+        break;
+      }
+      else if(extensionsFind){
+        extensions += line.trim();
+      }
+    }
+    this.vueHelpInfo.extensions = eval(`(${extensions})`) as string[];
+  }
+
   getWebpackAlias(){
+    logger.info("获取 webpack alias...");
     const lines = this.vueHelpInfo.webpackConfigTextLines;
     const aliasLines = [];
     let aliasFind = false;
@@ -136,8 +162,9 @@ export default class VueProjectService implements ProjectService{
     const entryFilePath = this.vueHelpInfo.entryFiles.map(file => join(targetBranchDir, file));
     const madgeConfig = {
       baseDir: this.detectService.directoryInfo.targetBranchDir,
-      fileExtensions: ['js', 'ts', 'jsx', 'tsx', 'vue'],
+      fileExtensions: this.vueHelpInfo.extensions.map(ext => ext.replace(/^\./, "")),
       webpackConfig: this.vueHelpInfo.webpackConfigPath,
+      excludeRegExp: [/node_modules/],
     };
     const res = await madge(entryFilePath, madgeConfig) as IMadgeInstance;
     this.vueHelpInfo.madgeResult = res;
@@ -157,7 +184,8 @@ export default class VueProjectService implements ProjectService{
     }, [] as string[]);
     const possibleEffectedFiles = collectUpstreamFiles(madgeResult!, validModifiedFiles);
     const possibleEffectedFilesFullPath = possibleEffectedFiles.map(file => join(absPathPrefix, file));
-    const { import2export, indirectExportMembers } = createExportedNameToReferenceLocalSet(possibleEffectedFilesFullPath, parsedAlias, absPathPrefix, projectFileList);
+    const mapRef = createExportedNameToReferenceLocalSet(possibleEffectedFilesFullPath, parsedAlias, absPathPrefix, projectFileList);
+    const { import2export, indirectExportMembers } = mapRef;
     const gitDiffDetail = this.gitDiffDetail;
     const validGitDiffDetail = gitDiffDetail.filter(item => possibleEffectedFiles.includes(item.filePath));
     const effectedExportNames = validGitDiffDetail.map(item => {
@@ -172,7 +200,7 @@ export default class VueProjectService implements ProjectService{
     const token = this.detectService.gitInfo.token;
     if(!token){
       const pwd = join(this.detectService.directoryInfo.tmpWorkDir, "..");
-      writeFileSync(join(pwd, "effectedImportUsage.json"), JSON.stringify(effectedImportUsage, null, 2))
+      writeFileSync(join(pwd, "effectedImportUsage.json"), JSON.stringify({ webpackConfig: this.createSimpleWebpackConfig(), tree: madgeResult?.tree, projectFileList, possibleEffectedFiles, gitDiffDetailFiles: gitDiffDetail.map(e => e.filePath), validGitDiffDetail, effectedImportUsage, ...mapRef}, null, 2))
     }
   }
 }

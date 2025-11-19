@@ -1,7 +1,7 @@
 import {formatGitDiffContent, GitDiffDetail} from "../../util/format_git_diff_content";
 import {DetectService} from "../DetectService";
 import {umi4SetUp} from "../../util/project_umi_util/umi4ProjectUtil";
-import {readFileSync} from "fs";
+import {readFileSync, writeFileSync} from "fs";
 import {join} from "path";
 import collectUpstreamFiles from "../../util/shared/collectUpstreamFiles";
 import {createExportedNameToReferenceLocalSet} from "../../util/report_util/createDependenceMap";
@@ -71,5 +71,10 @@ export default class UmiProjectService implements ProjectService {
       return effectedExportNames.includes(value);
     });
     this.outputResult.effectedImportUsage = effectedImportUsage;
+    const token = this.detectService.gitInfo.token;
+    if(!token){
+      const pwd = join(this.detectService.directoryInfo.tmpWorkDir, "..");
+      writeFileSync(join(pwd, "effectedImportUsage.json"), JSON.stringify({ tree: madgeResult?.tree, projectFileList, possibleEffectedFiles, gitDiffDetailFiles: gitDiffDetail.map(e => e.filePath), validGitDiffDetail, effectedImportUsage}, null, 2))
+    }
   }
 }
