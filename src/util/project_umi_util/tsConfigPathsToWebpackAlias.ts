@@ -24,10 +24,8 @@ export async function tsConfigPathsToWebpackAlias(options: {
     throw new Error(`未找到 tsconfig.json 文件：${tsconfigPath}`);
   }
 
-  const tsconfig = await tsconfigPaths.loadConfig(projectRoot) as {
-    compilerOptions?: CompilerOptions;
-  };
-  const { paths = {}, baseUrl = '.' } = tsconfig.compilerOptions || {};
+  const compilerOptions = await tsconfigPaths.loadConfig(projectRoot) as Pick<CompilerOptions, 'paths'|'baseUrl'>;
+  const { paths = {}, baseUrl = '.' } = compilerOptions || {};
 
   // 解析 baseUrl（绝对路径直接用，相对路径基于项目根目录）
   const resolvedBaseUrl = path.isAbsolute(baseUrl)
