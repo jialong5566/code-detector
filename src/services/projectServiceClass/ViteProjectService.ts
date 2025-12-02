@@ -58,7 +58,7 @@ export default class ViteProjectService implements ProjectService{
   async setAlias(){
     const targetDirPath = this.detectService.directoryInfo.targetBranchDir;
     this.helpInfo.parsedAlias = await tsConfigPathsToWebpackAlias({
-      tsconfigPath: join(targetDirPath, "tsConfig.json"),
+      tsconfigPath: join(targetDirPath, "tsconfig.json"),
       projectRoot: targetDirPath,
       excludeTypeOnly: false
     });
