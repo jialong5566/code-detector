@@ -11,6 +11,7 @@ import UmiProjectService from "./projectServiceClass/UmiProjectService";
 import { performance } from "perf_hooks";
 import cloneRepoWithBranchAndDefault from "../util/git_util/cloneRepoWithBranchAndDefault";
 import VueProjectService from "./projectServiceClass/VueProjectService";
+import ViteProjectService from "./projectServiceClass/ViteProjectService";
 
 export class DetectService {
   directoryInfo: {
@@ -136,7 +137,7 @@ export class DetectService {
     await execGitDiff(targetDirPath, baseBranch, targetBranch);
     const repoType = await getRepoType(join(targetDirPath, 'package.json'));
     this.gitInfo.repoType = repoType;
-    logger.info("克隆仓库成功");
+    logger.info(`克隆仓库成功, repoType: ${repoType}`);
   }
 
   async move(){
@@ -151,7 +152,9 @@ export class DetectService {
 
   async projectHandle(){
     const { repoType } = this.gitInfo;
+    logger.info('开始处理项目' + repoType);
     if(!isRepoTypeSupported(repoType)){
+      logger.info('不支持的 repoType:' + repoType);
       return;
     }
     if(repoType === 'umi'){
@@ -159,6 +162,9 @@ export class DetectService {
     }
     if(repoType === 'vue2'){
       this.projectService = new VueProjectService(this);
+    }
+    if(repoType === 'vite'){
+      this.projectService = new ViteProjectService(this);
     }
     await this.projectService?.run();
   }

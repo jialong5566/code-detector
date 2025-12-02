@@ -28,8 +28,8 @@ const astNode: AstNode|null = astResult[1] as any;
 if(astNode){
   AstUtil.deepFirstTravel(astNode as any, 'eg.ts', mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet);
   const fn = (astNode as any)?.program?.body[0];
-  const names = [...fn._util.holdingIds].map((e: any) => e.name);
+  const names = [...fn._util.holdingIds].map((e: any) => e.name).sort();
   test('collect function params names:', () => {
-    expect(names).toEqual(['firstParams', 'deconstruction', 'item1', 'defaultInObject', 'item2', 'defaultInArray', 'other', 'run']);
+    expect(names).toEqual(['firstParams', 'deconstruction', 'item1', 'defaultInObject', 'item2', 'defaultInArray', 'other', 'run'].sort());
   });
 }

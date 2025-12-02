@@ -1,8 +1,9 @@
 import {readFileSync, existsSync} from "fs";
-import {logger} from "@umijs/utils";
+import {logger, semver} from "@umijs/utils";
+import {getMajorVersion} from "./getMajorVersion";
 
 export function isRepoTypeSupported(repoType: string){
-  return ['umi', 'vue2'].includes(repoType);
+  return ['umi', 'vue2', 'vite'].includes(repoType);
 }
 
 export function getRepoType(jsonPath:string){
@@ -15,7 +16,11 @@ export function getRepoType(jsonPath:string){
     if(packageJsonObj?.dependencies?.['@umijs/max']){
       return 'umi';
     }
-    if(packageJsonObj?.dependencies?.['@vue/cli-service'] || packageJsonObj?.devDependencies?.['@vue/cli-service']){
+    if(packageJsonObj?.dependencies?.['vite'] || packageJsonObj?.devDependencies?.['vite']){
+      return 'vite';
+    }
+    const vueVersion = packageJsonObj?.dependencies?.['vue'];
+    if(vueVersion && getMajorVersion(vueVersion) === 2){
       return 'vue2';
     }
   }

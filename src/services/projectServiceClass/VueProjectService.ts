@@ -164,7 +164,7 @@ export default class VueProjectService implements ProjectService{
       baseDir: this.detectService.directoryInfo.targetBranchDir,
       fileExtensions: this.vueHelpInfo.extensions.map(ext => ext.replace(/^\./, "")),
       webpackConfig: this.vueHelpInfo.webpackConfigPath,
-      excludeRegExp: [/node_modules/],
+      excludeRegExp: [/node_modules/, /\.d\.ts$/],
     };
     const res = await madge(entryFilePath, madgeConfig) as IMadgeInstance;
     this.vueHelpInfo.madgeResult = res;

@@ -13,7 +13,7 @@ const createMapFileLineToNodeSet = (file: string, absPathPrefix: string, stopTra
   return {mapFileLineToNodeSet, mapUuidToNode, mapPathToNodeSet};
 };
 
-export default function getAstKitByFilePath(filePath: string, absPathPrefix: string, stopTravelCallback?: Parameters<typeof AstUtil.deepFirstTravel>[5]){
+export default function getAstKitByFilePath(filePath: string, absPathPrefix: string = '', stopTravelCallback?: Parameters<typeof AstUtil.deepFirstTravel>[5]){
   if(stopTravelCallback){
     return createMapFileLineToNodeSet(filePath, absPathPrefix, stopTravelCallback);
   }

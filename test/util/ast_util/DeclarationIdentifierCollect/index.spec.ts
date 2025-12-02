@@ -51,7 +51,7 @@ const astNode: AstNode|null = astResult[1] as any;
 if(astNode){
   AstUtil.deepFirstTravel(astNode as any, 'eg.ts', mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet);
   const programNode = (astNode as any)?.program;
-  const names = [...programNode._util.holdingIds].map((e: any) => e.name);
+  const names = [...new Set(programNode._util.children.map((c: any) => [...c._util.holdingIds]).flat().map((e: any) => e.name))];
   test('collect variable names:', () => {
     expect(names.sort()).toEqual(['React', 'Ref','All','fn','fnExport', 'cls',  'clsExport','EnumDec', 'EnumDecExport', 'Itf', 'ItfExport', 'Tp', 'TpExport', 'mutA','mutB'].sort());
   });

@@ -1,6 +1,7 @@
 import { windowProperties } from "./windowProperties";
 import { intrinsicElements, standardAttributes } from "./intrinsicElements";
 import {EXPORT_DECLARATION_TYPES, INVALID_NODE_KEY} from "./SHARED_CONSTANTS";
+import syncTravel from "./helper/syncTravel";
 export interface AstNode {
   computed?: boolean;
   type: string;
@@ -38,7 +39,10 @@ export interface AstNode {
   }
 }
 
-export default class AstUtil {
+export { AstUtil as default } from "./AstKit";
+
+
+export class AstUtil {
   static invalidNodeKey = INVALID_NODE_KEY;
   static EXPORT_DECLARATION_TYPES = EXPORT_DECLARATION_TYPES;
   static windowProperties = windowProperties
@@ -963,7 +967,7 @@ export default class AstUtil {
     }
     if(parent === null){
       nodeCollection.forEach(n => {
-        const path = AstUtil.getNodePath(n);
+        const path = this.getNodePath(n);
         mapPathToNodeSet.set(path, mapPathToNodeSet.get(path) || new Set());
         mapPathToNodeSet.get(path)?.add(n);
       });

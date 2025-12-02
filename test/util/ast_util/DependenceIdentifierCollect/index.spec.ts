@@ -30,6 +30,7 @@ const element = <div {...props} style={styleObject}>
 </div>
 
 export { mutA as MUT_A, mutB };
+const deepMember = obj.shorthand[computedInMember][0]
 `;
 
 const mapUuidToNode = new Map<string, AstNode>();
@@ -42,12 +43,8 @@ if(astNode){
   AstUtil.deepFirstTravel(astNode as any, 'eg.ts', mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet);
   const programNode = (astNode as any)?.program;
   const names = [...programNode._util.dependenceIds].map((e: any) => e.name);
-  const singleVariable = [...programNode._util.holdingIds].find((e: any) => e.name === 'singleVariable')?._util.parent;
-  if(singleVariable){
-    console.log(singleVariable.type, [...singleVariable._util.dependenceIds].map((e: any) => AstUtil.getShortNodeMsg(e)));
-  }
 
   test('collect variable names:', () => {
-    expect([...new Set(names)]).toEqual(['test', 'computed', 'shorthand', 'props', 'styleObject', 'Select','children', 'mutA', 'mutB']);
+    expect([...new Set(names)]).toEqual(['test', 'computed', 'shorthand', 'props', 'styleObject', 'Select','children', 'mutA', 'mutB', 'obj', 'computedInMember']);
   });
 }
