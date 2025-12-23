@@ -171,11 +171,12 @@ export class DetectService {
 
   formatResult(){
     const repoType = this.gitInfo.repoType;
-    const { effectedImportUsage, error } = this.projectService?.outputResult || { effectedImportUsage: [], error: null };
+    const { effectedImportUsage, error, relatedExportUsage } = this.projectService?.outputResult || { relatedExportUsage: [], effectedImportUsage: [], error: null };
     return {
       error,
       repoType,
       effectedImportUsage,
+      relatedExportUsage,
     }
   }
 };

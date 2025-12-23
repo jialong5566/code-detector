@@ -120,7 +120,7 @@ export default class ViteProjectService implements ProjectService{
     const token = this.detectService.gitInfo.token;
     if(!token){
       const pwd = join(this.detectService.directoryInfo.tmpWorkDir, "..");
-      writeFileSync(join(pwd, "effectedImportUsage.json"), JSON.stringify({  tree: madgeResult?.tree, projectFileList, possibleEffectedFiles, gitDiffDetailFiles: gitDiffDetail.map(e => e.filePath), validGitDiffDetail, effectedImportUsage, ...mapRef}, null, 2))
+      writeFileSync(join(pwd, "effectedImportUsage.json"), JSON.stringify({  tree: madgeResult?.tree, projectFileList, possibleEffectedFiles, gitDiffDetailFiles: gitDiffDetail.map(e => e.filePath), validGitDiffDetail, ...this.outputResult, ...mapRef}, null, 2))
     }
   }
 }
