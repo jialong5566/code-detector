@@ -1,10 +1,11 @@
 import getAstKitByFilePath from "../ast_util/getAstKitByFilePath";
 import AstUtil, {AstNode} from "../ast_util/AstUtil";
+import getEffectedExportMembersOfLineRange from "../ast_util/helper/getEffectedExportMembersOfLineRange";
 
 export default function filterEffectedExportMember(filePath: string, absPathPrefix: string, startLine: number, endLine: number){
-  const astKit = getAstKitByFilePath(filePath, absPathPrefix, travelNode => ["VElement", "ImportDeclaration", "ExportAllDeclaration", "ExportNamedDeclaration", "ExportDefaultDeclaration"].includes(travelNode.type));
+  const astKit = getAstKitByFilePath(filePath, absPathPrefix);
   const { mapFileLineToNodeSet } = astKit;
-  return extractEffectedExportMemberByLineRange(mapFileLineToNodeSet, startLine, endLine, filePath);
+  return getEffectedExportMembersOfLineRange(mapFileLineToNodeSet, startLine, endLine, filePath);
 }
 
 export function extractEffectedExportMemberByLineRange(mapFileLineToNodeSet: Map<number, Set<AstNode>>, startLine: number, endLine: number, filePath: string){

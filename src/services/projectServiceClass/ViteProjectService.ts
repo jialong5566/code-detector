@@ -12,6 +12,7 @@ import {createExportedNameToReferenceLocalSet} from "../../util/report_util/crea
 import filterEffectedExportMember from "../../util/report_util/filterEffectedExportMember";
 import isVueEntryFile from "../../util/project_umi_util/isVueEntryFile";
 import {tsConfigPathsToWebpackAlias} from "../../util/project_umi_util/tsConfigPathsToWebpackAlias";
+import findRelateUsageOfExport from "../../util/ast_util/helper/findRelateUsageOfExport";
 
 
 export default class ViteProjectService implements ProjectService{
@@ -21,6 +22,7 @@ export default class ViteProjectService implements ProjectService{
     parsedAlias: {},
   };
   outputResult: ProjectService['outputResult'] = {
+    relatedExportUsage: [],
     effectedImportUsage: [],
     error: null
   };
@@ -66,7 +68,7 @@ export default class ViteProjectService implements ProjectService{
 
   async readSrcDirFilesAndSetEntries(){
     const targetDirPath = this.detectService.directoryInfo.targetBranchDir;
-    const projectFileList = readDirFiles({ dir: join(targetDirPath, 'src')}).filter(e => e.filePath.endsWith('.ts') || e.filePath.endsWith('.js'));
+    const projectFileList = readDirFiles({ dir: join(targetDirPath, 'src')}).filter(e => (e.filePath.endsWith('.ts') && !e.filePath.endsWith('.d.ts')) || e.filePath.endsWith('.js'));
     // todo 有优化空间
     this.viteHelpInfo.entryFiles = projectFileList.filter(file => isVueEntryFile(file.filePath)).map(e => e.filePath);
   }
@@ -113,6 +115,8 @@ export default class ViteProjectService implements ProjectService{
       return effectedExportNames.includes(value);
     });
     this.outputResult.effectedImportUsage = effectedImportUsage;
+    const effectedImportUsageUnique = [...new Set(effectedImportUsage.map(item => item[0]))].map(importFileAndMember => importFileAndMember.split("#") as [string, string]);
+    this.outputResult.relatedExportUsage = findRelateUsageOfExport(effectedImportUsageUnique, import2export, indirectExportMembers, absPathPrefix);
     const token = this.detectService.gitInfo.token;
     if(!token){
       const pwd = join(this.detectService.directoryInfo.tmpWorkDir, "..");

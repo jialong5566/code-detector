@@ -50,6 +50,11 @@ export class AstUtil {
     if(!node){
       return ;
     }
-    syncTravel(node, { filePath, mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet, visitedNodeSet, upstreamIdentifiers: [] }, () => {});
+    try {
+      syncTravel(node, { filePath, mapUuidToNode, mapFileLineToNodeSet, mapPathToNodeSet, visitedNodeSet, upstreamIdentifiers: [] }, () => {});
+    }
+    catch (e) {
+      console.log("syncTravel in " + filePath, e);
+    }
   }
 }

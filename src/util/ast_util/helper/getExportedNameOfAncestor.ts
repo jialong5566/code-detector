@@ -27,7 +27,7 @@ export default function getExportedNameOfAncestor(node: AstNode|undefined|null){
     if(ancestor.type === "ExportNamedDeclaration"){
       const declarationType = (ancestor as any).declaration?.type;
       if(EXPORT_DECLARATION_TYPES.includes(declarationType)){
-        const nameToAdd = (ancestor as any).declaration.id.name;
+        const nameToAdd = (ancestor as any).declaration.id?.name;
         if(nameToAdd){
           nameList.add(nameToAdd);
         }

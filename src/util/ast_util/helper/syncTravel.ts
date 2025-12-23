@@ -52,6 +52,7 @@ function wideTravel(wideTravelNodeList: AstNode[], extra: Extra, travelFn: (astN
           parentProperty: childKey,
           indexOfProperty: null,
           ancestors: [...wideTravelNode._util.ancestors, wideTravelNode],
+          ...childValue._util as any
         });
         childrenOfChild.push(childValue);
         wideTravelNodes.push(childValue);
@@ -66,6 +67,7 @@ function wideTravel(wideTravelNodeList: AstNode[], extra: Extra, travelFn: (astN
             parentProperty: childKey,
             indexOfProperty: index,
             ancestors: [...wideTravelNode._util.ancestors, wideTravelNode],
+            ...childInArray._util as any
           });
           childrenOfChild.push(childInArray);
           wideTravelNodes.push(childInArray);
@@ -73,16 +75,20 @@ function wideTravel(wideTravelNodeList: AstNode[], extra: Extra, travelFn: (astN
       }
     });
   }
-  const { hoistedNodeList, exportDeclarations, notHoistedNodes } = resortNodes(wideTravelNodes);
+  const { hoistedNodeList, notHoistedNodes } = resortNodes(wideTravelNodes);
   const holdingIdentifiers: AstNode[] = [...extra.upstreamIdentifiers];
 
+  const importIdentifiers = new Set<AstNode>();
   // 收集导入声明、提升的声明、导出的提升声明
-  for(const ele of [...hoistedNodeList, ...exportDeclarations]){
-    collectHoldingIdentifiers(ele, holdingIdentifiers, exportDeclarations);
+  for(const ele of hoistedNodeList){
+    collectHoldingIdentifiers(ele, identifier => {
+      holdingIdentifiers.push(identifier);
+      // todo _util注入
+    }, identifier => importIdentifiers.add(identifier));
   }
   for(const ele of wideTravelNodes){
     if(notHoistedNodes.includes(ele)){
-      collectHoldingIdentifiers(ele, holdingIdentifiers, exportDeclarations);
+      collectHoldingIdentifiers(ele, identifier => holdingIdentifiers.push(identifier), identifier => void 0);
     }
     const mergedExtra = { ...extra, upstreamIdentifiers: [...holdingIdentifiers] };
     const holdingIdentifierSet = new Set(holdingIdentifiers);
@@ -102,13 +108,26 @@ function wideTravel(wideTravelNodeList: AstNode[], extra: Extra, travelFn: (astN
     }
     addIdentifiersToAncestors([ele], ele._util.ancestors);
   }
+  importIdentifiers.forEach(identifier => {
+    identifier._util.holdingIdType = "Import";
+  });
 }
 
 function deepTravel(deepTravelNode: AstNode, extra: Extra, travelFn: (astNode: AstNode) => void){
   const { upstreamIdentifiers } = extra;
   const holdingIdentifiers = [...upstreamIdentifiers];
   // 函数类型 进行 参数收集
-  collectParamsIdentifier(deepTravelNode, holdingIdentifiers);
+  // todo 函数参数 属于动态依赖
+  const paramIdentifierSet = new Set<AstNode>();
+  if(FUNCTION_TYPES.includes(deepTravelNode.type)){
+    const params = (deepTravelNode as unknown as { params: AstNode[] }).params;
+    Array.isArray(params) && params.forEach(param => {
+      deepSearchParamsIdentifier(param, identifier => {
+        holdingIdentifiers.push(identifier);
+        paramIdentifierSet.add(identifier);
+      });
+    });
+  }
   updateVariableScopeAndOccupation(deepTravelNode, holdingIdentifiers);
   const { visitedNodeSet, filePath } = extra;
   const { children } = deepTravelNode._util;
@@ -129,6 +148,7 @@ function deepTravel(deepTravelNode: AstNode, extra: Extra, travelFn: (astNode: A
       childValue._util = createAstNodeExt({
         indexOfProperty: null,
         ...commonNodeExt,
+        ...childValue._util as any
       });
       children.push(childValue);
     }
@@ -139,13 +159,13 @@ function deepTravel(deepTravelNode: AstNode, extra: Extra, travelFn: (astNode: A
         childInArray._util = createAstNodeExt({
           indexOfProperty: index,
           ...commonNodeExt,
+          ...childInArray._util as any
         });
         children.push(childInArray);
       });
     }
   });
   const mergedExtra = { ...extra, upstreamIdentifiers: holdingIdentifiers };
-  travelFn(deepTravelNode);
   for(const child of children){
     if(shouldWideTravel(child)){
       wideTravel([child], mergedExtra, travelFn);
@@ -161,13 +181,27 @@ function deepTravel(deepTravelNode: AstNode, extra: Extra, travelFn: (astNode: A
     }
     addIdentifiersToAncestors([child], ancestors);
   }
+  paramIdentifierSet.forEach(paramIdentifier => {
+    paramIdentifier._util.holdingIdType = "Param";
+  });
+  // 注入依赖 我用了谁
+  const injectSet = new Set([...deepTravelNode._util.dependenceIds].filter(e => isValidIdentifierOrJSXIdentifier(e)).map(e => e._util.variableScope[0]).filter(Boolean).filter(e => upstreamIdentifiers.includes(e)));
+  deepTravelNode._util.inject = injectSet;
+  // 影响面 谁用了我
+  for (const injectNode of injectSet) {
+    if(!injectNode._util){
+      // todo 不优雅
+      injectNode._util = { provide: new Set() } as any;
+    }
+    injectNode._util.provide.add(deepTravelNode);
+  }
+  travelFn(deepTravelNode);
 }
 
 /* -------- 以下为辅助函数 ---------- */
 
 function resortNodes(nodes: AstNode[]){
   const hoistedNodeList: AstNode[] = [];
-  const exportDeclarations: AstNode[] = [];
   for (const astNode of nodes) {
     if(["ImportDeclaration", "FunctionDeclaration", "TSEnumDeclaration", "TSInterfaceDeclaration", "TSTypeAliasDeclaration"].includes(astNode.type)){
       hoistedNodeList.push(astNode);
@@ -176,14 +210,13 @@ function resortNodes(nodes: AstNode[]){
       const decType = (astNode as any).declaration?.type;
       const decId = (astNode as any).declaration?.id;
       if(["FunctionDeclaration", "TSEnumDeclaration", "TSInterfaceDeclaration", "TSTypeAliasDeclaration"].includes(decType) && decId){
-        exportDeclarations.push(astNode);
+        hoistedNodeList.push(astNode);
       }
     }
   }
-  const notHoistedNodes: AstNode[] = nodes.filter(node => ![...hoistedNodeList, ...exportDeclarations].includes(node));
+  const notHoistedNodes: AstNode[] = nodes.filter(node => !hoistedNodeList.includes(node));
   return {
     hoistedNodeList,
-    exportDeclarations,
     notHoistedNodes,
   };
 }
@@ -203,49 +236,34 @@ function updateHoldingIdMap(holdingIdentifiers: AstNode[], holdingIdNameMap: Map
   });
 }
 
-function collectParamsIdentifier(deepTravelNode: AstNode, holdingIdentifiers:  AstNode[]){
-  if(FUNCTION_TYPES.includes(deepTravelNode.type)){
-    const params = (deepTravelNode as unknown as { params: AstNode[] }).params;
-    Array.isArray(params) && params.forEach(param => {
-      deepSearchParamsIdentifier(param, identifier => {
-        holdingIdentifiers.push(identifier);
-      });
-    });
-  }
-}
-
-function collectHoldingIdentifiers(ele: AstNode, holdingIdentifiers: AstNode[], exportDeclarations: AstNode[]){
+function collectHoldingIdentifiers(ele: AstNode, callback: (n: AstNode) => void, importCallback: (n: AstNode) => void){
   // 收集导出
   if(ele.type === "ImportDeclaration"){
     const specifiers = (ele as unknown as { specifiers: AstNode[] }).specifiers;
     for (const specifier of specifiers) {
-      holdingIdentifiers.push((specifier as unknown as { local: AstNode }).local);
+      const local = (specifier as unknown as { local: AstNode }).local;
+      callback(local);
+      importCallback(local);
     }
   }
   // 收集声明
   if(EXPORT_DECLARATION_TYPES.includes(ele.type as any)){
     const id = (ele as unknown as { id: AstNode }).id;
     if(id){
-      holdingIdentifiers.push(id);
+      callback(id);
     }
   }
   if(EXPORT_DECLARATION_TYPES.includes((ele as any).declaration?.type)){
     const id = (ele as unknown as { declaration: { id?: AstNode } }).declaration?.id;
     if(id){
-      holdingIdentifiers.push(id);
-    }
-  }
-  if(exportDeclarations.includes(ele)){
-    const id = (ele as unknown as { declaration: { id: AstNode } })?.declaration?.id;
-    if(id){
-      holdingIdentifiers.push(id);
+      callback(id);
     }
   }
   if(ele.type === "VariableDeclaration"){
     Array.from(new Set((ele as unknown as { declarations: AstNode[] }).declarations)).forEach(declaration => {
       const id = (declaration as unknown as { id: AstNode }).id;
       if(id){
-        deepSearchParamsIdentifier(id, identifier => holdingIdentifiers.push(identifier));
+        deepSearchParamsIdentifier(id, callback);
       }
     });
   }
@@ -253,7 +271,7 @@ function collectHoldingIdentifiers(ele: AstNode, holdingIdentifiers: AstNode[], 
     Array.from(new Set((ele as unknown as { declaration: { declarations: AstNode[] } }).declaration.declarations)).forEach(declaration => {
       const id = (declaration as unknown as { id: AstNode }).id;
       if(id){
-        deepSearchParamsIdentifier(id, identifier => holdingIdentifiers.push(identifier));
+        deepSearchParamsIdentifier(id, callback);
       }
     });
   }
@@ -292,6 +310,9 @@ function updateVariableScopeAndOccupation(deepTravelNode: AstNode, holdingIdenti
   const firstPick = deepTravelNode._util.variableScope[0];
   if(firstPick && firstPick !== deepTravelNode){
     if(firstPick._util){
+      if(!firstPick._util.occupation){
+        firstPick._util.occupation = new Set();
+      }
       firstPick._util.occupation.add(deepTravelNode);
     }
     else {
@@ -319,7 +340,6 @@ function isImportedOrExported(deepTravelNode: AstNode){
 function addIdentifiersToAncestors(children: AstNode[], ancestors: AstNode[]) {
   for (const child of children) {
     ancestors.forEach(ancestor => {
-      // isValidIdentifierOrJSXIdentifier(child) && ancestor._util.dependenceIds.add(child);
       !ancestor._util.nodeCollection.includes(child) && ancestor._util.nodeCollection.push(child);
     });
   }

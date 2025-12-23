@@ -9,6 +9,7 @@ import filterEffectedExportMember from "../../util/report_util/filterEffectedExp
 import {ProjectService} from "../ProjectService";
 import {gitDiffFileName} from "../../util/constants";
 import {IMadgeInstance} from "../../util/report_util/getMadgeInstance";
+import findRelateUsageOfExport, {RelateUsageOfExport} from "../../util/ast_util/helper/findRelateUsageOfExport";
 
 export default class UmiProjectService implements ProjectService {
   gitDiffDetail: GitDiffDetail[] = [];
@@ -17,6 +18,7 @@ export default class UmiProjectService implements ProjectService {
     parsedAlias: {},
   };
   outputResult: ProjectService['outputResult'] = {
+    relatedExportUsage: [],
     effectedImportUsage: [],
     error: null,
   };
@@ -48,19 +50,24 @@ export default class UmiProjectService implements ProjectService {
   async collectEffectedFiles() {
     const { parsedAlias } = this.helpInfo;
     const { madgeResult } = this.umiHelpInfo;
+    // 项目相关的 ts\tsx 文件
     const projectFileList = this.helpInfo.projectFileList;
     const targetBranchDir = this.detectService.directoryInfo.targetBranchDir;
     const absPathPrefix = join(targetBranchDir, '/');
+    // 过滤 出改动的 ts\tsx 文件
     const validModifiedFiles = this.gitDiffDetail.reduce((acc, item) => {
       const { filePath } = item;
       this.helpInfo.projectFileList.includes(filePath) && acc.push(filePath);
       return acc;
     }, [] as string[]);
+    // 根据引用关系 向上查找 关联文件
     const possibleEffectedFiles = collectUpstreamFiles(madgeResult!, validModifiedFiles);
     const possibleEffectedFilesFullPath = possibleEffectedFiles.map(file => join(absPathPrefix, file));
     const { import2export, indirectExportMembers } = createExportedNameToReferenceLocalSet(possibleEffectedFilesFullPath, parsedAlias, absPathPrefix, projectFileList);
     const gitDiffDetail = this.gitDiffDetail;
+    // 过滤出 有效改动文件 以及 有效改动内容
     const validGitDiffDetail = gitDiffDetail.filter(item => possibleEffectedFiles.includes(item.filePath));
+    // 过滤出 改动的导出成员
     const effectedExportNames = validGitDiffDetail.map(item => {
       const { filePath, newBranchLineScope, startLineOfNew } = item;
       const exportedNames = filterEffectedExportMember(join(absPathPrefix, filePath), absPathPrefix, Number(startLineOfNew), Number(startLineOfNew) + Number(newBranchLineScope));
@@ -71,6 +78,8 @@ export default class UmiProjectService implements ProjectService {
       return effectedExportNames.includes(value);
     });
     this.outputResult.effectedImportUsage = effectedImportUsage;
+    const effectedImportUsageUnique = [...new Set(effectedImportUsage.map(item => item[0]))].map(importFileAndMember => importFileAndMember.split("#") as [string, string]);
+    this.outputResult.relatedExportUsage = findRelateUsageOfExport(effectedImportUsageUnique, import2export, indirectExportMembers, absPathPrefix);
     const token = this.detectService.gitInfo.token;
     if(!token){
       const pwd = join(this.detectService.directoryInfo.tmpWorkDir, "..");

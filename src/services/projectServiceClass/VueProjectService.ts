@@ -11,6 +11,7 @@ import collectUpstreamFiles from "../../util/shared/collectUpstreamFiles";
 import {createExportedNameToReferenceLocalSet} from "../../util/report_util/createDependenceMap";
 import filterEffectedExportMember from "../../util/report_util/filterEffectedExportMember";
 import to from "await-to-js";
+import findRelateUsageOfExport from "../../util/ast_util/helper/findRelateUsageOfExport";
 
 
 export default class VueProjectService implements ProjectService{
@@ -20,6 +21,7 @@ export default class VueProjectService implements ProjectService{
     parsedAlias: {},
   };
   outputResult: ProjectService['outputResult'] = {
+    relatedExportUsage: [],
     effectedImportUsage: [],
     error: null
   };
@@ -197,6 +199,8 @@ export default class VueProjectService implements ProjectService{
       return effectedExportNames.includes(value);
     });
     this.outputResult.effectedImportUsage = effectedImportUsage;
+    const effectedImportUsageUnique = [...new Set(effectedImportUsage.map(item => item[0]))].map(importFileAndMember => importFileAndMember.split("#") as [string, string]);
+    this.outputResult.relatedExportUsage = findRelateUsageOfExport(effectedImportUsageUnique, import2export, indirectExportMembers, absPathPrefix);
     const token = this.detectService.gitInfo.token;
     if(!token){
       const pwd = join(this.detectService.directoryInfo.tmpWorkDir, "..");
