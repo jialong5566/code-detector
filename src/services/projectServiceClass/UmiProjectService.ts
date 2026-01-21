@@ -86,8 +86,9 @@ export default class UmiProjectService implements ProjectService {
     this.outputResult.noMatchExportMembers = noMatchExportMembers;
     const token = this.detectService.gitInfo.token;
     if(!token){
+      const noMatchExportMembersMini = noMatchExportMembers.filter(({ file, from }) => validModifiedFiles.includes(file) || validModifiedFiles.includes(from.file));
       const pwd = join(this.detectService.directoryInfo.tmpWorkDir, "..");
-      writeFileSync(join(pwd, "effectedImportUsage.json"), JSON.stringify({ tree: madgeResult?.tree, projectFileList, possibleEffectedFiles, gitDiffDetailFiles: gitDiffDetail.map(e => e.filePath), validGitDiffDetail, ...this.outputResult }, null, 2))
+      writeFileSync(join(pwd, "effectedImportUsage.json"), JSON.stringify({ tree: madgeResult?.tree, projectFileList, possibleEffectedFiles, gitDiffDetailFiles: gitDiffDetail.map(e => e.filePath), validGitDiffDetail, ...this.outputResult, noMatchExportMembersMini  }, null, 2))
       mmd_html(join(pwd, 'relation.html'), create_mmd(this.outputResult.relatedExportUsage));
     }
   }

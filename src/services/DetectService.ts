@@ -171,13 +171,19 @@ export class DetectService {
 
   formatResult(){
     const repoType = this.gitInfo.repoType;
+    const gitDiffDetail = this.projectService?.gitDiffDetail;
     const { effectedImportUsage, error, relatedExportUsage, noMatchExportMembers } = this.projectService?.outputResult || { relatedExportUsage: [], effectedImportUsage: [], noMatchExportMembers: [], error: null };
-    return {
+    const result = {
       error,
       repoType,
       effectedImportUsage,
       relatedExportUsage,
       noMatchExportMembers
     }
+    if(gitDiffDetail){
+      const changedFiles = gitDiffDetail.map(e => e.filePath);
+      result.noMatchExportMembers = result.noMatchExportMembers.filter(({ file, from }) => changedFiles.includes(file) || changedFiles.includes(from.file));
+    }
+    return result;
   }
 };

@@ -204,8 +204,9 @@ export default class VueProjectService implements ProjectService{
     this.outputResult.noMatchExportMembers = noMatchExportMembers;
     const token = this.detectService.gitInfo.token;
     if(!token){
+      const noMatchExportMembersMini = noMatchExportMembers.filter(({ file, from }) => validModifiedFiles.includes(file) || validModifiedFiles.includes(from.file));
       const pwd = join(this.detectService.directoryInfo.tmpWorkDir, "..");
-      writeFileSync(join(pwd, "effectedImportUsage.json"), JSON.stringify({ webpackConfig: this.createSimpleWebpackConfig(), tree: madgeResult?.tree, projectFileList, possibleEffectedFiles, gitDiffDetailFiles: gitDiffDetail.map(e => e.filePath), validGitDiffDetail, ...this.outputResult, ...mapRef, noMatchExportMembers }, null, 2))
+      writeFileSync(join(pwd, "effectedImportUsage.json"), JSON.stringify({ webpackConfig: this.createSimpleWebpackConfig(), tree: madgeResult?.tree, projectFileList, possibleEffectedFiles, gitDiffDetailFiles: gitDiffDetail.map(e => e.filePath), validGitDiffDetail, ...this.outputResult, ...mapRef, noMatchExportMembersMini }, null, 2))
     }
   }
 }

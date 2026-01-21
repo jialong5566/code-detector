@@ -10,5 +10,5 @@ export default function findNoMatchExportMember(import2export: Record<string, st
         member: exportFileAndMember.split('#')[1],
       }
     };
-  });
+  }).filter(({useless, from: { file }}) => !useless && ['.ts', '.tsx', '.js', '.jsx', '.vue'].some(ext => file.endsWith(ext)));
 }
