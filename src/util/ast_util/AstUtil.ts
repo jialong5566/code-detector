@@ -34,7 +34,7 @@ export interface AstNode {
     provide: Set<AstNode>,
     effectIds: Set<AstNode>,
     occupation: Set<AstNode>,
-    importedMember: { sourcePath: string, members: { importedName: string, localName: string }[] }[],
+    importedMember: { sourcePath: string, members: { importedName: string, localName: string, useless?: boolean }[] }[],
     exportedMember: { sourcePath: string, members: { exportedName: string, localName: string }[], ExportAllDeclaration: boolean }[],
   }
 }

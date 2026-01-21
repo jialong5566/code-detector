@@ -1,6 +1,7 @@
 import getAstKitByFilePath from "../ast_util/getAstKitByFilePath";
 import {join} from "path";
 import resolveImportPath from "./resolveImportPath";
+import findNoMatchExportMember from "../ast_util/helper/findNoMatchExportMember";
 
 
 export function createExportedNameToReferenceLocalSet(upstreamFileFullPaths: string[], parsedAlias: Record<string, string>, absPathPrefix: string, projectFilePaths: string[]) {
@@ -9,6 +10,7 @@ export function createExportedNameToReferenceLocalSet(upstreamFileFullPaths: str
   const localAlias = Object.fromEntries(Object.entries(parsedAlias).map(([k, v]) => [k, v.startsWith(systemAbsPathPrefix) ? v.replace(systemAbsPathPrefix, "") : v] ));
   const import2export: Record<string, string> = {};
   const export2export: Record<string, string> = {};
+  const uselessImportMembers: string[] = [];
   const mapFilePathToExportAllSources: Record<string, string[]> = {};
   // 过滤 有效后缀，排除 .d.ts
   const validFiles = upstreamFileFullPaths.filter(e => ['.ts', '.tsx', '.js', '.jsx', '.vue'].some(ext => e.endsWith(ext) && !e.endsWith('.d.ts')));
@@ -31,10 +33,13 @@ export function createExportedNameToReferenceLocalSet(upstreamFileFullPaths: str
       // 获取 导入成员的 真实路径信息
       const finalSourcePath = createRealSourcePath(sourcePath, isExternal, projectFilePaths, fullPath);
       // 遍历导入成员
-      for(const { importedName: imported, localName: local } of members){
+      for(const { importedName: imported, localName: local, useless } of members){
         const importLocal = `${relativeFilePath}#${local}`; // 必定唯一
         const exportedName = `${finalSourcePath}#${imported}`; // 可能重复
         import2export[importLocal] = exportedName;
+        if(useless){
+          uselessImportMembers.push(importLocal);
+        }
       }
       // 没有导入成员，则认为是导入整个文件
       if (members.length === 0){
@@ -60,7 +65,10 @@ export function createExportedNameToReferenceLocalSet(upstreamFileFullPaths: str
   };
 
   const indirectExportMembers = genIndirectExportMembers(mapFilePathToExportAllSources, export2export, import2export);
+  const noMatchExportMembers = findNoMatchExportMember(import2export, export2export, uselessImportMembers);
+
   return {
+    noMatchExportMembers,
     import2export,
     export2export,
     mapFilePathToExportAllSources,

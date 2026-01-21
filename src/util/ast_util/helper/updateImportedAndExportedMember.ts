@@ -12,11 +12,13 @@ export default function updateImportedAndExportedMember(node: AstNode, programNo
   if(type === "ImportDeclaration"){
     specifiers.forEach(specifier => {
       const { local, imported } = specifier as unknown as AstNode & { local: AstNode, imported?: AstNode };
+      const extendInfo = !local._util?.occupation?.size ? { useless: true } : {};
       const target = findOrCreateImportedMember(importedMember, sourceValue);
       if(specifier.type === "ImportNamespaceSpecifier"){
         target.members.push({
           localName: local.name as string,
           importedName: "*",
+          ...extendInfo,
         });
         return;
       }
@@ -24,6 +26,7 @@ export default function updateImportedAndExportedMember(node: AstNode, programNo
         target.members.push({
           localName: local.name as string,
           importedName: "default",
+          ...extendInfo,
         });
         return;
       }
@@ -31,6 +34,7 @@ export default function updateImportedAndExportedMember(node: AstNode, programNo
         target.members.push({
           localName: local.name as string,
           importedName: imported!.name as string,
+          ...extendInfo,
         });
       }
     });
@@ -61,19 +65,17 @@ export default function updateImportedAndExportedMember(node: AstNode, programNo
       }
     });
     if(Array.isArray(declaration?.declarations)){
-      declaration?.declarations.forEach(dec => {
-        const target = findOrCreateExportedMember(exportedMember,  sourceValue);
-        collectVariableDeclarationIdentifiers(dec,identifier => {
-          try{
-            const idName = identifier.name;
-            target!.members.push({
-              localName: idName as string,
-              exportedName: idName as string,
-            });
-          } catch(e: any){
-            console.log("declaration?.declarations.forEach", e.message);
-          }
-        });
+      const target = findOrCreateExportedMember(exportedMember,  sourceValue);
+      collectVariableDeclarationIdentifiers(declaration!,identifier => {
+        try{
+          const idName = identifier.name;
+          target!.members.push({
+            localName: idName as string,
+            exportedName: idName as string,
+          });
+        } catch(e: any){
+          console.log("declaration?.declarations.forEach", e.message);
+        }
       });
     }
     else if(EXPORT_DECLARATION_TYPES.includes(declaration?.type as any)){

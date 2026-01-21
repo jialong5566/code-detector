@@ -21,6 +21,7 @@ export default class UmiProjectService implements ProjectService {
     parsedAlias: {},
   };
   outputResult: ProjectService['outputResult'] = {
+    noMatchExportMembers: [],
     relatedExportUsage: [],
     effectedImportUsage: [],
     error: null,
@@ -64,10 +65,8 @@ export default class UmiProjectService implements ProjectService {
       return acc;
     }, [] as string[]);
     // 根据引用关系 向上查找 关联文件
-    // const possibleEffectedFiles = projectFileList;
     const possibleEffectedFiles = collectUpstreamFiles(madgeResult!, validModifiedFiles);
-    const possibleEffectedFilesFullPath = possibleEffectedFiles.map(file => join(absPathPrefix, file));
-    const { import2export, indirectExportMembers } = createExportedNameToReferenceLocalSet(possibleEffectedFilesFullPath, parsedAlias, absPathPrefix, projectFileList);
+    const { import2export, indirectExportMembers, noMatchExportMembers } = createExportedNameToReferenceLocalSet(projectFileList.map(file => join(absPathPrefix, file)), parsedAlias, absPathPrefix, projectFileList);
     const gitDiffDetail = this.gitDiffDetail;
     // 过滤出 有效改动文件 以及 有效改动内容
     const validGitDiffDetail = gitDiffDetail.filter(item => possibleEffectedFiles.includes(item.filePath));
@@ -84,6 +83,7 @@ export default class UmiProjectService implements ProjectService {
     this.outputResult.effectedImportUsage = effectedImportUsage;
     const effectedImportUsageUnique = [...new Set(effectedImportUsage.map(item => item[0]))].map(importFileAndMember => importFileAndMember.split("#") as [string, string]);
     this.outputResult.relatedExportUsage = findRelateUsageOfExport(effectedImportUsageUnique, import2export, indirectExportMembers, absPathPrefix);
+    this.outputResult.noMatchExportMembers = noMatchExportMembers;
     const token = this.detectService.gitInfo.token;
     if(!token){
       const pwd = join(this.detectService.directoryInfo.tmpWorkDir, "..");

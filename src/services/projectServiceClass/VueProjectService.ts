@@ -21,6 +21,7 @@ export default class VueProjectService implements ProjectService{
     parsedAlias: {},
   };
   outputResult: ProjectService['outputResult'] = {
+    noMatchExportMembers: [],
     relatedExportUsage: [],
     effectedImportUsage: [],
     error: null
@@ -185,9 +186,8 @@ export default class VueProjectService implements ProjectService{
       return acc;
     }, [] as string[]);
     const possibleEffectedFiles = collectUpstreamFiles(madgeResult!, validModifiedFiles);
-    const possibleEffectedFilesFullPath = possibleEffectedFiles.map(file => join(absPathPrefix, file));
-    const mapRef = createExportedNameToReferenceLocalSet(possibleEffectedFilesFullPath, parsedAlias, absPathPrefix, projectFileList);
-    const { import2export, indirectExportMembers } = mapRef;
+    const mapRef = createExportedNameToReferenceLocalSet(projectFileList.map(file => join(absPathPrefix, file)), parsedAlias, absPathPrefix, projectFileList);
+    const { import2export, indirectExportMembers, noMatchExportMembers } = mapRef;
     const gitDiffDetail = this.gitDiffDetail;
     const validGitDiffDetail = gitDiffDetail.filter(item => possibleEffectedFiles.includes(item.filePath));
     const effectedExportNames = validGitDiffDetail.map(item => {
@@ -201,10 +201,11 @@ export default class VueProjectService implements ProjectService{
     this.outputResult.effectedImportUsage = effectedImportUsage;
     const effectedImportUsageUnique = [...new Set(effectedImportUsage.map(item => item[0]))].map(importFileAndMember => importFileAndMember.split("#") as [string, string]);
     this.outputResult.relatedExportUsage = findRelateUsageOfExport(effectedImportUsageUnique, import2export, indirectExportMembers, absPathPrefix);
+    this.outputResult.noMatchExportMembers = noMatchExportMembers;
     const token = this.detectService.gitInfo.token;
     if(!token){
       const pwd = join(this.detectService.directoryInfo.tmpWorkDir, "..");
-      writeFileSync(join(pwd, "effectedImportUsage.json"), JSON.stringify({ webpackConfig: this.createSimpleWebpackConfig(), tree: madgeResult?.tree, projectFileList, possibleEffectedFiles, gitDiffDetailFiles: gitDiffDetail.map(e => e.filePath), validGitDiffDetail, ...this.outputResult, ...mapRef, effectedExportNames}, null, 2))
+      writeFileSync(join(pwd, "effectedImportUsage.json"), JSON.stringify({ webpackConfig: this.createSimpleWebpackConfig(), tree: madgeResult?.tree, projectFileList, possibleEffectedFiles, gitDiffDetailFiles: gitDiffDetail.map(e => e.filePath), validGitDiffDetail, ...this.outputResult, ...mapRef, noMatchExportMembers }, null, 2))
     }
   }
 }

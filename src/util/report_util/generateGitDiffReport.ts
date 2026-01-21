@@ -35,6 +35,7 @@ export async function generateGitDiffReport(arg: { madgeResult: IMadgeInstance, 
     import2export: {},
     export2export: {},
     mapFilePathToExportAllSources: {},
+    noMatchExportMembers: []
   };
   let partialDependenceJson: Record<string, any> = {};
   let reports: ReturnType<typeof createDetectReport> = [];
