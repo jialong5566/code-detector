@@ -7,6 +7,7 @@ import deepSearchParamsIdentifier from "./deepSearchParamsIdentifier";
 import updateImportedAndExportedMember from "./updateImportedAndExportedMember";
 import updateLoc from "./updateLoc";
 import {intrinsicElements} from "../intrinsicElements";
+import {windowProperties} from "../windowProperties";
 
 type Extra = {
   visitedNodeSet: Set<AstNode>,
@@ -111,6 +112,11 @@ function wideTravel(wideTravelNodeList: AstNode[], extra: Extra, travelFn: (astN
   importIdentifiers.forEach(identifier => {
     identifier._util.holdingIdType = "Import";
   });
+  if(wideTravelNodeList[0]?.type === "Program"){
+    const program = wideTravelNodeList[0];
+    updateLoc(program, extra);
+    (program as unknown as  { body: AstNode[] }).body.forEach(bodyElement => updateImportedAndExportedMember(bodyElement, program));
+  }
 }
 
 function deepTravel(deepTravelNode: AstNode, extra: Extra, travelFn: (astNode: AstNode) => void){
@@ -303,11 +309,19 @@ function updateVariableScopeAndOccupation(deepTravelNode: AstNode, holdingIdenti
   if(!valid){
     return;
   }
+
+  const variableScope = [...(deepTravelNode._util.holdingIdNameMap.get(nodeName) || [])]
+  deepTravelNode._util.variableScope = variableScope;
+
+  const firstPick = deepTravelNode._util.variableScope[0];
+  const isGlobalVariable = !firstPick && deepTravelNode.type === "Identifier" && windowProperties.includes(nodeName);
   !holdingIdentifierSet.has(deepTravelNode) && deepTravelNode._util.ancestors.forEach(ancestor => {
     ancestor._util.dependenceIds.add(deepTravelNode);
+    if(ancestor.type === "Program" && isGlobalVariable){
+      // todo
+    }
   });
-  deepTravelNode._util.variableScope = [...(deepTravelNode._util.holdingIdNameMap.get(nodeName) || [])];
-  const firstPick = deepTravelNode._util.variableScope[0];
+
   if(firstPick && firstPick !== deepTravelNode){
     if(firstPick._util){
       if(!firstPick._util.occupation){

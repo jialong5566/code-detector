@@ -9,7 +9,10 @@ import filterEffectedExportMember from "../../util/report_util/filterEffectedExp
 import {ProjectService} from "../ProjectService";
 import {gitDiffFileName} from "../../util/constants";
 import {IMadgeInstance} from "../../util/report_util/getMadgeInstance";
-import findRelateUsageOfExport, {RelateUsageOfExport} from "../../util/ast_util/helper/findRelateUsageOfExport";
+import findRelateUsageOfExport from "../../util/ast_util/helper/findRelateUsageOfExport";
+import create_mmd from "../../util/report_util/create_mmd";
+import {execa} from "@umijs/utils";
+import mmd_html from "../../util/report_util/mmd_html";
 
 export default class UmiProjectService implements ProjectService {
   gitDiffDetail: GitDiffDetail[] = [];
@@ -61,6 +64,7 @@ export default class UmiProjectService implements ProjectService {
       return acc;
     }, [] as string[]);
     // 根据引用关系 向上查找 关联文件
+    // const possibleEffectedFiles = projectFileList;
     const possibleEffectedFiles = collectUpstreamFiles(madgeResult!, validModifiedFiles);
     const possibleEffectedFilesFullPath = possibleEffectedFiles.map(file => join(absPathPrefix, file));
     const { import2export, indirectExportMembers } = createExportedNameToReferenceLocalSet(possibleEffectedFilesFullPath, parsedAlias, absPathPrefix, projectFileList);
@@ -70,7 +74,7 @@ export default class UmiProjectService implements ProjectService {
     // 过滤出 改动的导出成员
     const effectedExportNames = validGitDiffDetail.map(item => {
       const { filePath, newBranchLineScope, startLineOfNew } = item;
-      const exportedNames = filterEffectedExportMember(join(absPathPrefix, filePath), absPathPrefix, Number(startLineOfNew), Number(startLineOfNew) + Number(newBranchLineScope));
+      const exportedNames = filterEffectedExportMember(join(absPathPrefix, filePath), absPathPrefix, Number(startLineOfNew), Number(startLineOfNew) + Number(newBranchLineScope) - 1);
       return exportedNames.map(name => [filePath, name].join('#'));
     }).flat();
 
@@ -84,6 +88,7 @@ export default class UmiProjectService implements ProjectService {
     if(!token){
       const pwd = join(this.detectService.directoryInfo.tmpWorkDir, "..");
       writeFileSync(join(pwd, "effectedImportUsage.json"), JSON.stringify({ tree: madgeResult?.tree, projectFileList, possibleEffectedFiles, gitDiffDetailFiles: gitDiffDetail.map(e => e.filePath), validGitDiffDetail, ...this.outputResult }, null, 2))
+      mmd_html(join(pwd, 'relation.html'), create_mmd(this.outputResult.relatedExportUsage));
     }
   }
 }

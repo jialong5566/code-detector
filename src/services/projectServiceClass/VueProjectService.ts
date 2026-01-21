@@ -192,7 +192,7 @@ export default class VueProjectService implements ProjectService{
     const validGitDiffDetail = gitDiffDetail.filter(item => possibleEffectedFiles.includes(item.filePath));
     const effectedExportNames = validGitDiffDetail.map(item => {
       const { filePath, newBranchLineScope, startLineOfNew } = item;
-      const exportedNames = filterEffectedExportMember(join(absPathPrefix, filePath), absPathPrefix, Number(startLineOfNew), Number(startLineOfNew) + Number(newBranchLineScope));
+      const exportedNames = filterEffectedExportMember(join(absPathPrefix, filePath), absPathPrefix, Number(startLineOfNew), Number(startLineOfNew) + Number(newBranchLineScope) - 1);
       return exportedNames.map(name => [filePath, name].join('#'));
     }).flat();
     const effectedImportUsage = [...Object.entries(import2export), ...Object.entries(indirectExportMembers)].filter(([_, value]) => {
@@ -204,7 +204,7 @@ export default class VueProjectService implements ProjectService{
     const token = this.detectService.gitInfo.token;
     if(!token){
       const pwd = join(this.detectService.directoryInfo.tmpWorkDir, "..");
-      writeFileSync(join(pwd, "effectedImportUsage.json"), JSON.stringify({ webpackConfig: this.createSimpleWebpackConfig(), tree: madgeResult?.tree, projectFileList, possibleEffectedFiles, gitDiffDetailFiles: gitDiffDetail.map(e => e.filePath), validGitDiffDetail, ...this.outputResult, ...mapRef}, null, 2))
+      writeFileSync(join(pwd, "effectedImportUsage.json"), JSON.stringify({ webpackConfig: this.createSimpleWebpackConfig(), tree: madgeResult?.tree, projectFileList, possibleEffectedFiles, gitDiffDetailFiles: gitDiffDetail.map(e => e.filePath), validGitDiffDetail, ...this.outputResult, ...mapRef, effectedExportNames}, null, 2))
     }
   }
 }

@@ -26,20 +26,24 @@ function wideDeepCollectNames(nodes: AstNode[]){
 
 function wideHelper(idNodes: AstNode[], bodyMemberSet: Set<AstNode>, identifierSet: Set<AstNode>, memberCallback: (n: string) => void){
   const identifierSetTmp = new Set<AstNode>();
+  // 找出 使用 导入成员的 Program下直接 的 ast
   const bodyElements = idNodes.map(item => [...item._util.provide].filter(e => e._util.parent?.type === "Program")).flat().filter(e => !bodyMemberSet.has(e));
   for (const node of bodyElements) {
     bodyMemberSet.add(node);
+    // 收集 Program下直接 的 ast 的 变量声明 和 函数声明的 id
     collectIdentifiers(node, id => {
       if(identifierSet.has(id) || !id) return;
       identifierSet.add(id);
       identifierSetTmp.add(id);
     });
+    // 收集 Program下直接 的 ast 的 导出声明 的 id 和 成员名
     collectExportIds(node, memberCallback, id => {
       if(identifierSet.has(id) || !id) return;
       identifierSet.add(id);
       identifierSetTmp.add(id);
     });
   }
+  // 本次收集 有新的 标识符成员
   if(identifierSetTmp.size){
     wideHelper([...identifierSetTmp], bodyMemberSet, identifierSet, memberCallback);
   }

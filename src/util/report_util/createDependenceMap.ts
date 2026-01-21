@@ -18,6 +18,7 @@ export function createExportedNameToReferenceLocalSet(upstreamFileFullPaths: str
     // 获取 每个文件的 Program 节点
     const programNode = mapUuidToNode.get("Program");
     if(!programNode){
+      console.log("no program node in file: " + absFilePath.replace(absPathPrefix, ""))
       continue;
     }
     // 获取 每个文件的 导入导出 信息

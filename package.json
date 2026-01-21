@@ -40,12 +40,14 @@
   },
   "dependencies": {
     "@babel/parser": "^7.28.3",
+    "@mermaid-js/mermaid-cli": "^11.12.0",
     "@umijs/utils": "^4.4.12",
     "await-to-js": "^3.0.0",
     "crypto-js": "^4.2.0",
     "dayjs": "^1.11.13",
     "lodash": "^4.17.21",
     "madge": "^8.0.0",
+    "puppeteer": "^24.34.0",
     "simple-git": "^3.28.0",
     "vue-eslint-parser": "^10.2.0"
   }

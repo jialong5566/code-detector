@@ -2,9 +2,9 @@ import {findImportUsageInExport} from "./findImportUsageInExport";
 import getAstKitByFilePath from "../getAstKitByFilePath";
 
 export type RelateUsageOfExport = {
-  filePath: string;
-  importMemberAndFile: { fromFile: string, localName: string }[];
-  exportMember: string;
+  filePath: string; // 当前文件
+  importMemberAndFile: { fromFile: string, localName: string }[]; // 导入的成员的 本地变量名 以及 来源文件
+  exportMember: string; // 影响到的 当前文件的 导出成员
 };
 
 export default function findRelateUsageOfExport(effectedImportUsage: [string, string][], import2export: Record<string, string>, indirectExportMembers: Record<string, string>, absPathPrefix: string){
@@ -15,6 +15,7 @@ export default function findRelateUsageOfExport(effectedImportUsage: [string, st
 }
 
 function findRelateUsageOfExportHelper(effectedImportUsage: [string, string][], import2export: Record<string, string>, indirectExportMembers: Record<string, string>, absPathPrefix: string, result: RelateUsageOfExport[], ignoreList: string[], count = 0){
+  // 映射关系：文件 -> 导入成员
   const mapFileToImportMembers = effectedImportUsage.reduce((acc, [file, member]) => {
     acc[file] = acc[file] || [];
     acc[file].push(member);
@@ -24,7 +25,8 @@ function findRelateUsageOfExportHelper(effectedImportUsage: [string, string][], 
     const astKit = getAstKitByFilePath(filePath, absPathPrefix);
     const programNode = astKit.mapUuidToNode.get("Program");
     if (!programNode) return [];
-    const list = findImportUsageInExport(programNode, members).map(([, exportMembers]) => exportMembers).flat();
+    // 导入成员 影响到的 导出成员
+    const list: string[] = findImportUsageInExport(programNode, members).map(([, exportMembers]) => exportMembers).flat();
     result.push(...list.map(exportMember => {
       const importMemberAndFile = members.map(member => {
         const fromFile = import2export[`${filePath}#${member}`]?.split("#")[0];
@@ -34,7 +36,9 @@ function findRelateUsageOfExportHelper(effectedImportUsage: [string, string][], 
     }));
     return list.map(item => [filePath, item] as const)
   }).flat();
+  // 拼接 文件与导出成员
   const effectedExportUsageFileAndMember = effectedExportUsage.map(([f, m]) => `${f}#${m}`);
+  // 通过 文件与导出成员 找出 新的 影响到的导入成员
   const effectedImportUsageList = [...Object.entries(import2export), ...Object.entries(indirectExportMembers)].filter(([, exportFileAndMember]) => {
     return effectedExportUsageFileAndMember.includes(exportFileAndMember)
   }).map(([_]) => _);

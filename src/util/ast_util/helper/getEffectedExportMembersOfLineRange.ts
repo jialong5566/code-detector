@@ -65,15 +65,13 @@ export default function getEffectedExportMembersOfLineRange(mapFileLineToNodeSet
       }
     }
     if(type === "ExportNamedDeclaration" && Array.isArray(declaration?.declarations)){
-      declaration?.declarations.forEach(dec => {
-        collectVariableDeclarationIdentifiers(dec,identifier => {
-          try{
-            const idName = identifier.name;
-            typeof idName === "string" && effectedExportMembers.add(idName);
-          } catch(e: any){
-            console.log("getEffectedExportMembersOfLineRange", e.message);
-          }
-        });
+      collectVariableDeclarationIdentifiers(declaration!,identifier => {
+        try{
+          const idName = identifier.name;
+          typeof idName === "string" && effectedExportMembers.add(idName);
+        } catch(e: any){
+          console.log("getEffectedExportMembersOfLineRange", e.message);
+        }
       });
     }
   }
