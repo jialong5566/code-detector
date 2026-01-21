@@ -1,5 +1,6 @@
 import {findImportUsageInExport} from "./findImportUsageInExport";
 import getAstKitByFilePath from "../getAstKitByFilePath";
+import {join} from "path";
 
 export type RelateUsageOfExport = {
   filePath: string; // 当前文件
@@ -22,7 +23,7 @@ function findRelateUsageOfExportHelper(effectedImportUsage: [string, string][], 
     return acc;
   }, {} as  Record<string, string[]>);
   const effectedExportUsage = Object.entries(mapFileToImportMembers).map(([filePath, members]) => {
-    const astKit = getAstKitByFilePath(filePath, absPathPrefix);
+    const astKit = getAstKitByFilePath(join(absPathPrefix, filePath), absPathPrefix);
     const programNode = astKit.mapUuidToNode.get("Program");
     if (!programNode) return [];
     // 导入成员 影响到的 导出成员
